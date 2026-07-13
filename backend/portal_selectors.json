@@ -1,0 +1,66 @@
+{
+  "login": {
+    "username": "#txtUserName",
+    "password": "#txtPassword",
+    "submit": "#btnLogin",
+    "error_indicator": ".login-error, #lblError",
+    "logged_in_indicator": "#divMainMenu, .main-menu, #logout"
+  },
+  "eway": {
+    "menu_eway_bill": "text=E-Way Bill",
+    "menu_eway_entry": "text=E-Way Bill Entry",
+    "company_code": "#txtCompanyCode",
+    "eway_bill_no": "#txtEWayBillNo",
+    "from_validity": "#txtEWayFromValidity",
+    "to_validity": "#txtEWayToValidity",
+    "submit": "#btnSubmit",
+    "success_indicator": ".success-message, #lblSuccess",
+    "error_indicator": ".error-message, #lblErrorMsg"
+  },
+  "packing_slip": {
+    "menu_path": [
+      "text=Packing Slip",
+      "text=Packing Slip Entry"
+    ],
+    "fields": {
+      "invoice_no": "#txtInvoiceNo"
+    },
+    "submit": "#btnSubmit",
+    "success_indicator": ".success-message, #lblSuccess",
+    "error_indicator": ".error-message, #lblErrorMsg"
+  },
+  "asn": {
+    "menu_path": [
+      "text=ASN",
+      "text=ASN Creation"
+    ],
+    "fields": {
+      "invoice_no": "#txtInvoiceNo"
+    },
+    "submit": "#btnSubmit",
+    "success_indicator": ".success-message, #lblSuccess",
+    "error_indicator": ".error-message, #lblErrorMsg"
+  },
+  "vendor_ack": {
+    "menu_path": [
+      "text=Vendor Acknowledgement"
+    ],
+    "fields": {
+      "invoice_no": "#txtInvoiceNo"
+    },
+    "submit": "#btnSubmit",
+    "success_indicator": ".success-message, #lblSuccess",
+    "error_indicator": ".error-message, #lblErrorMsg"
+  },
+  "dqms": {
+    "menu_path": [
+      "text=DQMS"
+    ],
+    "fields": {
+      "invoice_no": "#txtInvoiceNo"
+    },
+    "submit": "#btnSubmit",
+    "success_indicator": ".success-message, #lblSuccess",
+    "error_indicator": ".error-message, #lblErrorMsg"
+  }
+}

@@ -8,7 +8,7 @@ router = APIRouter(prefix="/modules", tags=["modules"])
 SEED_MODULES = [
     {"key": "packing", "name": "Packing Module", "description": "Packing slip studio — generate printable outside slips and inside lot cards from shipment details.", "status": "active", "enabled": True, "icon": "Package"},
     {"key": "asn", "name": "ASN Automation", "description": "Advance Shipping Notice creation and submission automation for customer portals.", "status": "coming_soon", "enabled": False, "icon": "Truck"},
-    {"key": "eway-bill", "name": "E-Way Bill Automation", "description": "Automatic E-Way Bill generation from dispatch and invoice data via GST portal APIs.", "status": "coming_soon", "enabled": False, "icon": "Receipt"},
+    {"key": "eway-bill", "name": "E-Way Bill Automation", "description": "Uploads E-Way Bill numbers from Master Dispatch invoices to the TAFE Vendor Portal — batch runs, retries, test/live modes.", "status": "active", "enabled": True, "icon": "Receipt"},
     {"key": "vendor-ack", "name": "Vendor Acknowledgement", "description": "Automated vendor acknowledgement processing and confirmation tracking.", "status": "coming_soon", "enabled": False, "icon": "Handshake"},
     {"key": "dqms", "name": "DQMS Automation", "description": "Dispatch Quality Management System automation for quality documentation.", "status": "coming_soon", "enabled": False, "icon": "SealCheck"},
 ]
@@ -17,8 +17,9 @@ SEED_MODULES = [
 async def seed_modules():
     for mod in SEED_MODULES:
         await db.modules.update_one({"key": mod["key"]}, {"$setOnInsert": mod}, upsert=True)
-    packing = SEED_MODULES[0]
-    await db.modules.update_one({"key": "packing"}, {"$set": packing})
+    for mod in SEED_MODULES:
+        if mod["key"] in ("packing", "eway-bill"):
+            await db.modules.update_one({"key": mod["key"]}, {"$set": mod})
 
 
 @router.get("")

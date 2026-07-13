@@ -13,6 +13,7 @@ import BulkUpload from "@/pages/master-dispatch/BulkUpload";
 import SearchDispatch from "@/pages/master-dispatch/SearchDispatch";
 import ModulePlaceholder from "@/pages/ModulePlaceholder";
 import PackingModule from "@/pages/PackingModule";
+import EWayBillModule from "@/pages/EWayBillModule";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
 
@@ -53,6 +54,7 @@ function App() {
             <Route path="master-dispatch/search" element={<SearchDispatch />} />
             <Route path="reports" element={<Reports />} />
             <Route path="modules/packing" element={<PackingModule />} />
+            <Route path="modules/eway-bill" element={<EWayBillModule />} />
             <Route path="modules/:moduleKey" element={<ModulePlaceholder />} />
             <Route
               path="settings"
