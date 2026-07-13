@@ -33,6 +33,19 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 - Full Grewal Engineering Works company website (merged verbatim from grewal-engineering EMT - 57cd4c project via its source bundle) is now the main front page at "/": Navbar (smooth-scroll + Portal Login button), Hero, About, Leadership, Overview, Capabilities, Machinery, Quality, Customers (marquee), Product Gallery (5 tabbed categories with product images), Vision, Footer with real contact details (address, phones, email). Components live in /app/frontend/src/components/landing/. Added react-fast-marquee dependency.
 - The old "Under Construction" page is retired. Admin Settings → Company Profile management remains (data stored, no longer drives the landing page).
 
+## Implemented — Iteration 4 (June 2026): Master Dispatch Module
+- New sidebar group "Master Dispatch" with 4 submenus: Create Dispatch, Dispatch List, Bulk Upload, Search Dispatch (old module relabelled "Dispatch Entry", untouched at /portal/dispatch and /api/dispatch)
+- New APIs under /api/master-dispatch (existing APIs unmodified): upload (1-100 PDFs, background OCR), batches (progress/logs/retry failed only), stats, CRUD, duplicate, admin-only delete, excel/pdf export, stored PDF retrieval
+- OCR: customer's own GEMINI_API_KEY (backend/.env, model gemini-flash-latest via google-genai SDK). Multi-invoice PDFs auto-detected + split with pypdf (>25 pages chunked). Per-field confidence 0-100; <90% highlighted amber on verification screen, editable before save
+- New collections: master_dispatch (items embedded), md_batches, md_uploaded_invoices (original+split PDFs), md_ocr_logs. IDs GEW-MD-##### via counters. Files at backend/uploads/master_dispatch/
+- Frontend: pages/master-dispatch/* + components/md/* (MDForm, MDRecordsTable, MDStats); dashboard shows Master Dispatch stats strip (total/today/pending/ready ASN/ready E-Way/completed/OCR errors)
+- Docs: /app/docs/MASTER_DISPATCH_MODULE.md (install/migration/rollback), /app/scripts/master_dispatch_migration.py
+- Testing iteration_5: backend 23/23, frontend 38/38 pass incl. regressions on all existing modules
+
+## Implemented — Iteration 5 (June 2026): Packing ↔ Master Dispatch independence
+- Confirmed modules are fully decoupled: packing_slips collection + /api/packing vs master_dispatch + /api/master-dispatch; no shared logic, no FKs, no backend changes made
+- Added optional "Import from Master Dispatch" button on Packing Slip Studio (frontend-only, components/PackingImportDialog.jsx): searchable picker, copies invoice_number/item name/item code/qty/boxes/customer into a NEW slip once — no live link, later edits never sync; if MD API is down the dialog shows an error toast and Packing keeps working normally
+
 ## Backlog
 - P0: none outstanding
 - P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration)

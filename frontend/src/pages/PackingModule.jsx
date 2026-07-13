@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Package, FloppyDisk, Printer, ArrowCounterClockwise, Trash, FolderOpen } from "@phosphor-icons/react";
+import { Package, FloppyDisk, Printer, ArrowCounterClockwise, Trash, FolderOpen, DownloadSimple } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import api, { apiError } from "@/lib/api";
+import PackingImportDialog from "@/components/PackingImportDialog";
 
 const COMPANY = { name: "GREWAL ENGG. WORKS", address: "5/1-G 20/3 Mathura Road Faridabad", vc: "302235" };
 
@@ -95,6 +96,7 @@ export default function PackingModule() {
   const [saving, setSaving] = useState(false);
   const [printMode, setPrintMode] = useState(null);
   const [tab, setTab] = useState("new");
+  const [importOpen, setImportOpen] = useState(false);
 
   const boxes = Math.max(1, parseInt(slip.boxes) || 1);
   const insideCount = parseInt(slip.inside_cards) > 0 ? parseInt(slip.inside_cards) : boxes;
@@ -205,6 +207,9 @@ export default function PackingModule() {
                 <Button variant="secondary" size="sm" onClick={() => printSlips("inside")} data-testid="packing-print-inside-button" className="rounded-sm gap-1">
                   <Printer size={15} /> Print Inside
                 </Button>
+                <Button variant="secondary" size="sm" onClick={() => setImportOpen(true)} data-testid="packing-import-md-button" className="rounded-sm gap-1">
+                  <DownloadSimple size={15} /> Import from Master Dispatch
+                </Button>
                 <Button variant="secondary" size="sm" onClick={() => setSlip(EMPTY_SLIP)} data-testid="packing-reset-button" className="rounded-sm gap-1">
                   <ArrowCounterClockwise size={15} /> Reset
                 </Button>
@@ -274,6 +279,12 @@ export default function PackingModule() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <PackingImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImport={(fields) => setSlip((s) => ({ ...s, ...fields }))}
+      />
 
       {printMode && (
         <div className="print-wrap" data-testid="packing-print-area" aria-hidden="true">

@@ -187,12 +187,14 @@ export default function DispatchList() {
               <span className="text-primary font-mono">{viewRec?.dispatch_no}</span> — {viewRec?.invoice_number}
             </DialogTitle>
             <DialogDescription>
-              <Badge variant="outline" className={`rounded-sm text-[9px] uppercase mr-2 ${STATUS_STYLES[viewRec?.status] || ""}`}>
-                {STATUS_LABELS[viewRec?.status] || viewRec?.status}
-              </Badge>
               Created by {viewRec?.created_by} on {viewRec?.created_at?.slice(0, 10)}
             </DialogDescription>
           </DialogHeader>
+          {viewRec && (
+            <Badge variant="outline" className={`rounded-sm text-[9px] uppercase w-fit ${STATUS_STYLES[viewRec.status] || ""}`}>
+              {STATUS_LABELS[viewRec.status] || viewRec.status}
+            </Badge>
+          )}
           {viewRec && (
             <div className="space-y-4 text-sm">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3">
