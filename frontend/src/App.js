@@ -1,55 +1,73 @@
-import { useEffect } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
-import { HOME } from "@/constants/testIds";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Toaster } from "@/components/ui/sonner";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
+import PortalLayout from "@/components/PortalLayout";
+import Landing from "@/pages/Landing";
+import Login from "@/pages/Login";
+import DashboardHome from "@/pages/DashboardHome";
+import MasterDispatch from "@/pages/MasterDispatch";
+import CreateDispatch from "@/pages/master-dispatch/CreateDispatch";
+import DispatchList from "@/pages/master-dispatch/DispatchList";
+import BulkUpload from "@/pages/master-dispatch/BulkUpload";
+import SearchDispatch from "@/pages/master-dispatch/SearchDispatch";
+import ModulePlaceholder from "@/pages/ModulePlaceholder";
+import PackingModule from "@/pages/PackingModule";
+import Reports from "@/pages/Reports";
+import Settings from "@/pages/Settings";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          data-testid={HOME.emergentLink}
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
+function Protected({ children, adminOnly = false }) {
+  const { user } = useAuth();
+  if (user === null)
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background" data-testid="auth-loading">
+        <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  if (user === false) return <Navigate to="/login" replace />;
+  if (adminOnly && user.role !== "admin") return <Navigate to="/portal" replace />;
+  return children;
+}
 
 function App() {
   return (
-    <div className="App">
+    <AuthProvider>
+      <div className="grain-overlay" aria-hidden="true" />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
+          <Route path="/" element={<Landing />} />
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/portal"
+            element={
+              <Protected>
+                <PortalLayout />
+              </Protected>
+            }
+          >
+            <Route index element={<DashboardHome />} />
+            <Route path="dispatch" element={<MasterDispatch />} />
+            <Route path="master-dispatch/create" element={<CreateDispatch />} />
+            <Route path="master-dispatch/list" element={<DispatchList />} />
+            <Route path="master-dispatch/bulk" element={<BulkUpload />} />
+            <Route path="master-dispatch/search" element={<SearchDispatch />} />
+            <Route path="reports" element={<Reports />} />
+            <Route path="modules/packing" element={<PackingModule />} />
+            <Route path="modules/:moduleKey" element={<ModulePlaceholder />} />
+            <Route
+              path="settings"
+              element={
+                <Protected adminOnly>
+                  <Settings />
+                </Protected>
+              }
+            />
           </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
-    </div>
+      <Toaster position="top-right" richColors />
+    </AuthProvider>
   );
 }
 

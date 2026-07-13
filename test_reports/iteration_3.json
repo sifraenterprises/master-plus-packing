@@ -1,0 +1,22 @@
+{
+  "summary": "Focused verification of (a) login working for both users and (b) full Emergent branding removal. Backend logins return 200 with token+user for admin/5@Sohangso and dispatch/5@Grewal (NO 404). UI login flow works end-to-end: landing -> nav-portal-login -> /login -> /portal for admin, logout via 'Sign out' -> re-login as dispatch -> /portal. Browser title is 'Grewal Engineering Works' on landing, login and portal pages. No references to emergent-main.js, posthog, or 'Emergent | Fullstack App' anywhere in served HTML. Landing hero/gallery/footer sections render; /portal/dispatch and /portal/modules/packing load post-login. Full backend regression: 34 passed / 1 skipped (PDF extraction, optional).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/iteration_3.xml"],
+  "action_items": [
+    "User's original 404 was on their deployed custom domain (grewalengineeringworks.com) which is a stale build - user must redeploy from this env. Code is deployment-ready.",
+    "Minor (non-blocking): admin sidebar link for Settings does not use anchor href pattern '/portal/settings' - could not verify via selector alone. Dispatch sidebar (confirmed via screenshot) correctly shows NO Settings entry. Recommend adding data-testid='sidebar-settings-link' for future automated verification of role-based nav."
+  ],
+  "critical_code_review_comments": [
+    "index.html is clean: correct title, inline SVG favicon, no external analytics/scripts. Good.",
+    "Login inputs use data-testid='login-username-input'/'login-password-input'/'login-submit-button' - consistent naming; no name/id fallback needed but present."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin/5@Sohangso, dispatch/5@Grewal (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None (used pre-seeded users; pytest suite creates+cleans up its own TEST_ users, dispatch entries, packing slips)",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login form testids are login-username-input / login-password-input / login-submit-button (not ...-username/-password). Logout uses 'Sign out' text button in sidebar. Backend base URL from frontend/.env REACT_APP_BACKEND_URL. All 34 backend tests pass in ~11s.",
+  "rca of the issue": "User's reported 404 was against their production custom domain (grewalengineeringworks.com) which hosts a stale front-end/back-end build. Current preview env code returns 200 for both users and has no emergent/posthog artifacts. Fix: user must redeploy latest build; no code change needed."
+}

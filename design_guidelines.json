@@ -1,0 +1,120 @@
+{
+  "theme": "Dark Industrial",
+  "typography": {
+    "fonts": {
+      "headings": "Chivo",
+      "body": "IBM Plex Sans",
+      "mono": "JetBrains Mono"
+    },
+    "scale": {
+      "h1": "text-4xl sm:text-5xl tracking-tight font-black",
+      "h2": "text-2xl sm:text-3xl tracking-tight font-bold",
+      "h3": "text-xl sm:text-2xl font-semibold",
+      "body": "text-sm md:text-base leading-relaxed",
+      "labels": "text-xs uppercase tracking-[0.2em] font-medium text-muted-foreground"
+    },
+    "instructions": "NEVER use Inter or generic sans for headings. Apply fluid typography. Use tight tracking for headings and wide tracking for small overlines/labels."
+  },
+  "colors": {
+    "mode": "dark-only",
+    "palette": {
+      "background": "224 15% 8%", 
+      "foreground": "210 40% 98%",
+      "card": "224 15% 11%",
+      "card-foreground": "210 40% 98%",
+      "popover": "224 15% 11%",
+      "popover-foreground": "210 40% 98%",
+      "primary": "24 95% 53%",
+      "primary-foreground": "0 0% 100%",
+      "secondary": "224 15% 16%",
+      "secondary-foreground": "210 40% 98%",
+      "muted": "224 15% 16%",
+      "muted-foreground": "215 20% 65%",
+      "accent": "224 15% 16%",
+      "accent-foreground": "210 40% 98%",
+      "destructive": "0 62.8% 30.6%",
+      "destructive-foreground": "210 40% 98%",
+      "border": "224 15% 16%",
+      "input": "224 15% 16%",
+      "ring": "24 95% 53%"
+    },
+    "instructions": "Modify index.css to enforce these dark mode HSL variables as the default :root variables. Do not rely on the 'dark' class, make the root these colors for a persistent industrial dark theme. Ensure text meets APCA contrast standards."
+  },
+  "visual_enhancers": {
+    "surfaces": "Use 'Grid Borders' pattern for the dashboard structure. Containers use border-collapse style layout. Subtle 1px borders on right and bottom of every grid item. No soft shadows; use sharp edges or max 4px (rounded-sm) radius.",
+    "effects": "Subtle noise overlay (grain texture) across the background to avoid digital flatness. Hover states should brighten backgrounds and elevate elements slightly (-translate-y-1).",
+    "glassmorphism": "For sticky headers or floating navs, use backdrop-blur-xl with bg-background/80 and a 1px delicate inner stroke (border-border). NEVER use completely transparent backgrounds under content."
+  },
+  "layouts": {
+    "landing_page": "High impact, full screen height. Background image covered with bg-background/80 overlay. Centered composition for 'Under Construction'.",
+    "dashboard": "High Density Grid. Fixed sidebar navigation. Main content area starts with breadcrumbs/header. The modules are arranged in a responsive grid (1 col mobile, 2 col tablet, 3-4 col desktop).",
+    "master_dispatch": "Split view or step-based layout. Top: File upload area (dashed border, generous padding). Middle: Extracted data form (editable grid of inputs). Bottom: Dispatch records table.",
+    "spacing": "Generous spacing. p-6 or p-8 for cards. gap-6 for grids."
+  },
+  "components": {
+    "buttons": "Sharp corners or rounded-sm radius. Primary buttons use the safety orange background (bg-primary) with white text. Hover state must be a lighter hue. Include interaction animations (scale-95 on active).",
+    "cards": "Flat background (bg-card), 1px solid border (border-border), no shadow by default. Hover adds slight lift and shadow-lg.",
+    "inputs": "Shadcn inputs customized with sharp edges, bg-background, focus:ring-primary focus:ring-2.",
+    "tables": "Shadcn table. Striped rows or border-b on cells. Hover effects on rows.",
+    "toasts": "Use Sonner for toast notifications.",
+    "charts": "Use Recharts/Shadcn charts for reports."
+  },
+  "motion": {
+    "interactions": "Hover states on all interactive elements. Buttons scale down slightly on active. Accordions for sidebar menus. Staggered entrance animations for dashboard module cards.",
+    "accessibility": "Respect prefers-reduced-motion. Decorative animations must have aria-hidden='true'."
+  },
+  "icons": {
+    "library": "@phosphor-icons/react",
+    "instructions": "Use Phosphor Icons (duotone or bold variants) for a technical/industrial feel. Add 'yarn add @phosphor-icons/react' to dependencies."
+  },
+  "media": {
+    "images": [
+      {
+        "category": "Landing Page Background",
+        "url": "https://images.unsplash.com/photo-1745448797900-35d08e85e9db?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzJ8MHwxfHNlYXJjaHwyfHxpbmR1c3RyaWFsJTIwZW5naW5lZXJpbmclMjBkYXJrJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3ODM3NTM5Mzl8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Welding sparks in darkness - perfect for Grewal Engineering Work. Requires a heavy dark overlay (bg-black/70 or bg-background/80)."
+      },
+      {
+        "category": "Dashboard Pattern/Texture",
+        "url": "https://images.pexels.com/photos/36346056/pexels-photo-36346056.jpeg",
+        "description": "Black metallic surface with oval textures. Can be used at very low opacity (5%) as a background texture."
+      }
+    ],
+    "3d_libraries": "Not strictly necessary for this dashboard. Focus on 2D high-contrast UI."
+  },
+  "accessibility": {
+    "testing": "All interactive and key informational elements MUST include a `data-testid` attribute (kebab-case, role-based).",
+    "contrast": "Normal text minimum 4.5:1. Use Text Shadow over images where needed. Ensure focus states have higher contrast than default state."
+  },
+  "instructions_to_main_agent": [
+    "Install required dependencies: yarn add @phosphor-icons/react sonner recharts",
+    "IMPORTANT: You have .js files not .tsx files. Generate all React components with .js or .jsx extensions. Do not output .tsx files.",
+    "Modify tailwind.config.js to include fonts (Chivo, IBM Plex Sans, JetBrains Mono) and enforce dark theme colors.",
+    "Update index.css to map the provided HSL color variables to the root (force dark mode globally for the industrial theme).",
+    "Remove default App.css text-align: center and generic styles.",
+    "Build Shadcn UI components for Buttons, Cards, Inputs, Tables, Dialogs, Selects, and Sonner Toasts in .js files.",
+    "Create the 'Under Construction' landing page route as the public facing root (/). Use the provided background image.",
+    "Create the Login page route (/login).",
+    "Create the authenticated Dashboard layout with a Sidebar.",
+    "Implement the Dashboard overview with Module Cards.",
+    "Implement the Master Dispatch Entry module (PDF Upload, form, table).",
+    "Implement placeholders for other modules with 'Coming Soon' state.",
+    "Ensure 100% responsiveness across Desktop, Tablet, and Mobile views."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. Make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts (except landing page hero), simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy and crisp borders.",
+    "You MUST NOT apply universal transition (e.g., transition: all). Add transitions for specific interactive properties.",
+    "You MUST NOT center align the app container in css.",
+    "Use modern button styles (sharp or slightly rounded) with interaction animations & color relevant to the industrial style.",
+    "NEVER use AI assistant Emoji characters for icons.",
+    "Every interaction needs micro-animations - hover states, transitions.",
+    "Use 2-3x more spacing than feels comfortable.",
+    "Subtle grain textures and selection states separate good from extraordinary.",
+    "Prioritize using pre-existing components from src/components/ui when applicable.",
+    "Use sonner for toasts.",
+    "All interactive and key informational elements MUST include a data-testid attribute."
+  ]
+}

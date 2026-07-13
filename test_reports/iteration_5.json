@@ -1,0 +1,39 @@
+{
+  "summary": "Full E2E testing of new Master Dispatch module (backend + frontend). Backend: 23/23 pytest cases pass covering auth, stats, upload+OCR+batch polling, non-PDF rejection, stored PDF retrieval, batches pagination, CRUD (create/get/update-verify/duplicate/delete), filters/sort/date range, role-based delete (dispatch=403, admin=200), Excel+PDF exports, regressions on /api/dispatch, /api/modules, /api/reports/summary, /api/packing/slips. Sample invoice PDF uploaded via /api/master-dispatch/upload -> batch completed -> record with dispatch_no GEW-MD-##### and verified=false created. Frontend: 38/38 Playwright assertions pass — admin dashboard MD stats strip + module card, sidebar Master Dispatch group + 4 submenus + old Dispatch Entry link, Dispatch List (search, filters, sort, pagination, exports, view/edit dialogs, admin-only delete), Create Dispatch (upload zone + manual entry dialog with MDForm save), Bulk Upload (zone + Recent Batches history with 2 completed batches), Search Dispatch (customer filter search returns count), old /portal/dispatch and Packing regression pages load. Login as dispatch role confirmed delete buttons are hidden on the MD list.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/master-dispatch/export/excel & /export/pdf", "issue": "Initially returned 500 due to openpyxl & reportlab not being installed in the backend venv (fresh env). Fixed by pip installing the versions already declared in /app/backend/requirements.txt (openpyxl==3.1.5, reportlab==5.0.0) and restarting backend. Recommend ensuring venv provisioning installs backend requirements."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Master Dispatch pages (DispatchList, etc.)", "issues": ["React hydration warnings in console: <span> inside <option> (page-size select) and <div> Badge inside <p> DialogDescription. Purely warnings from Radix/dev instrumentation, not functional; consider removing Badge from DialogDescription and rendering select options without child spans."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_master_dispatch.py",
+    "/app/test_reports/pytest/md_results.xml"
+  ],
+  "action_items": [
+    "Consider auto-installing backend requirements on env boot so openpyxl/reportlab-dependent export endpoints don't 500 on cold envs.",
+    "Optional: fix hydration warnings (Badge inside DialogDescription; option children) in DispatchList.jsx."
+  ],
+  "critical_code_review_comments": [
+    "master_dispatch_routes.py: /export endpoints do late imports of openpyxl/reportlab — if either package is missing the endpoint returns opaque 500. Consider top-of-file import so failures surface at startup; or return 503 with helpful message.",
+    "master_dispatch_routes.py delete/update use ObjectId — records look up by _id but list responses expose 'id' via MasterDispatch.from_mongo (assumed working since GET/{id} passed). Good.",
+    "MDForm select options embed dynamic <span> children causing React hydration warnings — cosmetic only."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_master_dispatch.py (new)"
+  ],
+  "success_rate": {"backend": "100% (23/23)", "frontend": "100% (38/38)"},
+  "test_credentials": "admin / 5@Sohangso, dispatch / 5@Grewal",
+  "seed_data_creation": "Test PDF ingested via OCR (already created GEW-MD-00001 earlier + one during this test). Manual test records (TEST_MD_*, TEST_UI_*) created and cleaned up.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend test suite at /app/backend/tests/test_master_dispatch.py covers the full Master Dispatch module and can be run with `python -m pytest backend/tests/test_master_dispatch.py -v -o addopts=''` (project pytest.ini enables xdist which needs empty addopts override on single-file runs). Public URL: https://invoice-master-295.preview.emergentagent.com. openpyxl==3.1.5 and reportlab==5.0.0 were pip-installed into /root/.venv during this iteration and backend restarted; if env is rebuilt, reinstall those packages or requirements.txt.",
+  "rca of the issue": "N/A — module works as designed. Only environmental gap was missing openpyxl/reportlab in venv, fixed by installing per requirements.txt."
+}

@@ -1,88 +1,95 @@
-from fastapi import FastAPI, APIRouter
 from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-import os
-import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
-import uuid
-from datetime import datetime, timezone
-
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / ".env")
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+import os
+import logging
+from fastapi import FastAPI, APIRouter
+from starlette.middleware.cors import CORSMiddleware
 
-# Create the main app without a prefix
-app = FastAPI()
+from database import db, client
+from models import utcnow
+from auth import hash_password, verify_password
+from routes.auth_routes import router as auth_router
+from routes.dispatch_routes import router as dispatch_router
+from routes.modules_routes import router as modules_router, seed_modules
+from routes.reports_routes import router as reports_router
+from routes.packing_routes import router as packing_router
+from routes.admin_routes import router as admin_router, public_router
+from routes.master_dispatch_routes import router as master_dispatch_router
 
-# Create a router with the /api prefix
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="Grewal Engineering Work — Automation Portal")
+
 api_router = APIRouter(prefix="/api")
 
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class StatusCheckCreate(BaseModel):
-    client_name: str
-
-# Add your routes to the router instead of directly to app
 @api_router.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"message": "Grewal Engineering Work API", "status": "online"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
-
-# Include the router in the main app
+api_router.include_router(auth_router)
+api_router.include_router(dispatch_router)
+api_router.include_router(modules_router)
+api_router.include_router(reports_router)
+api_router.include_router(packing_router)
+api_router.include_router(admin_router)
+api_router.include_router(master_dispatch_router)
+api_router.include_router(public_router)
 app.include_router(api_router)
 
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+
+async def seed_user(username_env: str, password_env: str, name: str, role: str):
+    username = os.environ[username_env].strip().lower()
+    password = os.environ[password_env]
+    existing = await db.users.find_one({"username": username})
+    if existing is None:
+        await db.users.insert_one({
+            "username": username, "name": name, "role": role,
+            "password_hash": hash_password(password), "created_at": utcnow().isoformat(),
+        })
+        logger.info(f"Seeded user: {username} ({role})")
+    elif not verify_password(password, existing.get("password_hash", "")):
+        await db.users.update_one({"username": username}, {"$set": {"password_hash": hash_password(password)}})
+        logger.info(f"Updated password for seeded user: {username}")
+
+
+@app.on_event("startup")
+async def startup():
+    await db.users.create_index("username", unique=True)
+    await db.login_attempts.create_index("identifier")
+    await db.dispatch_entries.create_index("dispatch_id")
+    await db.dispatch_entries.create_index("invoice_number")
+    await db.activity_logs.create_index("timestamp")
+    await db.master_dispatch.create_index("dispatch_no", unique=True)
+    await db.master_dispatch.create_index("invoice_number")
+    await db.master_dispatch.create_index("customer_name")
+    await db.master_dispatch.create_index("status")
+    await db.master_dispatch.create_index("batch_id")
+    await db.master_dispatch.create_index([("created_at", -1)])
+    await db.md_batches.create_index("batch_id", unique=True)
+    await db.md_uploaded_invoices.create_index("file_id", unique=True)
+    await db.md_uploaded_invoices.create_index("batch_id")
+    await db.md_ocr_logs.create_index("batch_id")
+    await db.md_ocr_logs.create_index([("created_at", -1)])
+    await seed_user("ADMIN_USERNAME", "ADMIN_PASSWORD", "Administrator", "admin")
+    await seed_user("DISPATCH_USERNAME", "DISPATCH_PASSWORD", "Dispatch Operator", "dispatch")
+    await seed_modules()
+    logger.info("Startup complete: users seeded, modules seeded, indexes created")
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
