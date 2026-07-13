@@ -46,6 +46,14 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 - Confirmed modules are fully decoupled: packing_slips collection + /api/packing vs master_dispatch + /api/master-dispatch; no shared logic, no FKs, no backend changes made
 - Added optional "Import from Master Dispatch" button on Packing Slip Studio (frontend-only, components/PackingImportDialog.jsx): searchable picker, copies invoice_number/item name/item code/qty/boxes/customer into a NEW slip once — no live link, later edits never sync; if MD API is down the dialog shows an error toast and Packing keeps working normally
 
+## Implemented — Iteration 6 (June 2026): E-Way Bill Automation merged (from eway-bill-submit project)
+- Merged the user's separate eway-bill-submit project into this app (no second application): shared TAFE portal automation engine copied to backend/automation.py + portal_selectors.json (Playwright, engine classes also ready for future ASN/Vendor Ack/DQMS/Packing portal automation)
+- New /api/eway/* routes (routes/eway_routes.py) using existing JWT auth: records (from master_dispatch, joined with new eway_submissions collection), PUT details (company code + validity DD/MM/YYYY), run/run-all-pending/retry-failed (max 3 attempts, failure screenshots in backend/screenshots/), stats, logs, export xlsx, run-status, settings mode (admin, LIVE gated by portal validation + TEST workflow validation 11/11 checks), selectors get/put (admin), portal validate, validation test-run
+- On successful portal submission the master_dispatch record status auto-syncs to "completed"
+- Frontend /portal/modules/eway-bill: EWayBillModule page (tabs E-Way Entry + admin Selector Config & Validation), matches dark industrial theme; module registry eway-bill set to "active"
+- Env: AUTOMATION_MODE=test, AUTOMATION_HEADLESS=true, TAFE_PORTAL_URL/USERNAME/PASSWORD (blank — user sets on VPS before LIVE); playwright added to requirements (VPS needs `playwright install chromium`)
+- Testing iteration_6: backend 25/25, frontend 100% pass incl. regressions on all modules
+
 ## Backlog
 - P0: none outstanding
 - P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration)

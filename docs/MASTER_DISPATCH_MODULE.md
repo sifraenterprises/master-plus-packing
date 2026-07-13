@@ -77,3 +77,59 @@ GEMINI_MODEL=gemini-flash-latest                   # optional override
 - PDFs larger than 25 pages are processed in 25-page chunks (an invoice spanning a chunk boundary may split imperfectly — edit in verification screen).
 - Confidence below 90% is highlighted amber on the verification screen and stored in `low_confidence_fields`.
 - Designed as the central data source for Packing, ASN, E-Way Bill, Vendor Ack, DQMS and Reports (records carry status: pending → ready_for_asn / ready_for_eway → completed).
+
+---
+
+# E-Way Bill Automation Module (merged from eway-bill-submit project)
+
+Merged into the same application at `/portal/modules/eway-bill`. Reuses the shared TAFE portal
+automation engine (`backend/automation.py`, Playwright-based, engine classes also ready for future
+ASN / Vendor Ack / DQMS / Packing Slip portal automation).
+
+## What it does
+Uploads E-Way Bill numbers from Master Dispatch invoices to the TAFE Vendor Portal
+(E-Way Bill → E-Way Bill Entry): batch runs, per-record runs, retry failed, max 3 attempts per
+record, failure screenshots, TEST/LIVE modes with admin-gated LIVE switch that requires both a
+non-destructive portal selector validation and a full TEST workflow validation to pass first.
+
+## Data flow (single source of truth)
+- Records come directly from `master_dispatch` (E-Way Bill number extracted by OCR).
+- Per-record portal details (company code, from/to validity DD/MM/YYYY) are stored in a new
+  `eway_submissions` collection keyed by master_dispatch id — the Master Dispatch schema is untouched.
+- On successful portal submission the Master Dispatch record status is set to `completed`.
+
+## New backend files
+- `backend/automation.py` + `backend/portal_selectors.json` (copied verbatim from eway-bill-submit — shared engine)
+- `backend/routes/eway_routes.py` — all `/api/eway/*` endpoints (existing auth middleware, admin-only mode/selector changes)
+- `backend/screenshots/` — failure screenshots
+- New collections: `eway_submissions`, plus reuse of `automation_logs` and `settings`
+
+## New frontend files
+- `frontend/src/pages/EWayBillModule.jsx` (tabs: E-Way Entry + admin Selector Config & Validation)
+- `frontend/src/components/eway/EwayEntryTab.jsx`, `SelectorConfigTab.jsx`
+
+## API summary (`/api/eway`, JWT protected)
+- `GET /records` (status/invoice/dispatch/date filters + pagination), `PUT /records/{id}` (company code + validity)
+- `GET /stats`, `POST /run`, `POST /run-all-pending`, `POST /retry-failed`, `GET /run-status`, `GET /logs`
+- `GET /export` (Excel), `GET /screenshots/{name}`
+- `GET /settings`, `POST /settings/mode` (admin, LIVE gated by validations)
+- `GET/PUT /selectors` (PUT admin), `POST /portal/validate` (admin), `GET /validation/status`, `POST /validation/test-run` (admin)
+
+## Environment variables (backend/.env)
+```
+AUTOMATION_MODE=test            # test | live (also switchable in UI by admin)
+AUTOMATION_HEADLESS=true
+TAFE_PORTAL_URL=                # set real values on the VPS before going LIVE
+TAFE_USERNAME=
+TAFE_PASSWORD=
+```
+
+## VPS installation additions
+1. `pip install playwright && playwright install chromium --with-deps` (needed only for LIVE mode / portal validation)
+2. Fill the TAFE_* env values, restart backend.
+3. In the module (admin): Selector Config tab → Validate Portal (with login) → Run TEST Validation → switch to LIVE.
+
+## Rollback (E-Way module only)
+Remove `backend/routes/eway_routes.py`, `backend/automation.py`, `backend/portal_selectors.json`,
+`frontend/src/pages/EWayBillModule.jsx`, `frontend/src/components/eway/`; revert the 2 server.py edits,
+the route in App.js and the eway-bill entry in modules_routes.py; optionally drop `eway_submissions`.
