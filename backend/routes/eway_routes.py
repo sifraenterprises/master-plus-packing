@@ -36,6 +36,7 @@ class ModeRequest(BaseModel):
 
 class ValidateRequest(BaseModel):
     attempt_login: bool = False
+    dry_run_fill: bool = False
 
 
 class EwayDetailsInput(BaseModel):
@@ -398,7 +399,8 @@ async def eway_portal_validate(req: ValidateRequest, user: dict = Depends(requir
         raise HTTPException(status_code=409, detail="An automation run is already in progress")
     headless = os.environ.get("AUTOMATION_HEADLESS", "true").lower() == "true"
     log = make_logger(str(uuid.uuid4()), "portal_validation")
-    results = await validate_portal(attempt_login=req.attempt_login, headless=headless, log=log)
+    results = await validate_portal(attempt_login=req.attempt_login, headless=headless, log=log,
+                                    dry_run_fill=req.dry_run_fill)
     passed = sum(1 for r in results if r["status"] == "ok")
     all_ok = passed == len(results) and len(results) > 0
     full_ok = all_ok and req.attempt_login

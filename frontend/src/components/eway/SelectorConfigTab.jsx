@@ -25,6 +25,7 @@ export default function SelectorConfigTab() {
   const [validating, setValidating] = useState(false);
   const [testing, setTesting] = useState(false);
   const [attemptLogin, setAttemptLogin] = useState(true);
+  const [dryRunFill, setDryRunFill] = useState(true);
   const [results, setResults] = useState(null);
   const [testResults, setTestResults] = useState(null);
   const [status, setStatus] = useState(null);
@@ -62,7 +63,7 @@ export default function SelectorConfigTab() {
     setValidating(true);
     setResults(null);
     try {
-      const r = await api.post("/eway/portal/validate", { attempt_login: attemptLogin });
+      const r = await api.post("/eway/portal/validate", { attempt_login: attemptLogin, dry_run_fill: dryRunFill });
       setResults(r.data);
       refreshStatus();
       r.data.all_ok
@@ -139,9 +140,13 @@ export default function SelectorConfigTab() {
             <p className="text-xs text-muted-foreground mb-3">
               Connects to the live TAFE portal and verifies login elements, navigation and every form selector. Never submits any form. Requires TAFE_PORTAL_URL / TAFE_USERNAME / TAFE_PASSWORD in backend .env.
             </p>
-            <label className="flex items-center gap-2 text-xs mb-3">
+            <label className="flex items-center gap-2 text-xs mb-2">
               <input type="checkbox" checked={attemptLogin} onChange={(e) => setAttemptLogin(e.target.checked)} data-testid="eway-attempt-login" />
               Verify login + navigation + form selectors (required for LIVE readiness)
+            </label>
+            <label className="flex items-center gap-2 text-xs mb-3">
+              <input type="checkbox" checked={dryRunFill} onChange={(e) => setDryRunFill(e.target.checked)} data-testid="eway-dry-run-fill" />
+              Dry-run fill: enter sample data into the form and verify values (Submit is never clicked)
             </label>
             <Button size="sm" onClick={validate} disabled={!isAdmin || validating || testing} data-testid="eway-validate-portal" className="rounded-sm gap-1">
               <Globe size={14} /> {validating ? "Validating…" : "Validate Portal"}

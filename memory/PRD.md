@@ -54,6 +54,13 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 - Env: AUTOMATION_MODE=test, AUTOMATION_HEADLESS=true, TAFE_PORTAL_URL/USERNAME/PASSWORD (blank — user sets on VPS before LIVE); playwright added to requirements (VPS needs `playwright install chromium`)
 - Testing iteration_6: backend 25/25, frontend 100% pass incl. regressions on all modules
 
+## Attempted — Iteration 7 (June 2026): Live TAFE portal validation
+- TAFE credentials stored in backend/.env only (TAFE_PORTAL_URL=https://wb01.tafechannel.com/, TAFE_USERNAME, TAFE_PASSWORD) — never logged, never shown in UI/API responses
+- Added dry_run_fill option to validate_portal (automation.py) + API + UI checkbox: fills entry form with sample data, verifies each value via input_value, NEVER clicks Submit
+- Playwright chromium installed; PLAYWRIGHT_BROWSERS_PATH added to backend/.env for the supervisor-run backend
+- RESULT: portal UNREACHABLE from this cloud environment — DNS resolves (103.57.69.174) but all TCP ports filtered while general internet works → TAFE blocks datacenter/non-whitelisted IPs. Validation correctly reports "connect: Portal unreachable"; LIVE mode remains honestly gated (portal validation not marked passed)
+- TO DO ON VPS: deploy, `playwright install chromium --with-deps`, click "Validate Portal" (both checkboxes) in Selector Config tab; if VPS is also blocked, ask TAFE to whitelist the VPS IP. Selectors in portal_selectors.json are best-guess and editable in-app once the real page is reachable
+
 ## Backlog
 - P0: none outstanding
 - P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration)

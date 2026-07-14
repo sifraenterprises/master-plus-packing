@@ -226,9 +226,10 @@ class DQMSAutomation(SimpleFormAutomation):
     section = "dqms"
 
 
-async def validate_portal(attempt_login=False, headless=True, log=None):
+async def validate_portal(attempt_login=False, headless=True, log=None, dry_run_fill=False):
     """Non-destructive live portal validation: connects, verifies selector presence,
-    optionally logs in and checks navigation/form selectors. NEVER submits any form."""
+    optionally logs in and checks navigation/form selectors. With dry_run_fill it also
+    fills the entry form with sample data and verifies values. NEVER submits any form."""
     results = []
 
     def add(step, status, message):
@@ -303,6 +304,29 @@ async def validate_portal(attempt_login=False, headless=True, log=None):
                 found = await page.locator(e[name]).count() > 0
                 add(f"eway.{name}", "ok" if found else "fail",
                     f"Selector '{e[name]}' {'found' if found else 'NOT found'} on entry page (presence check only - nothing submitted)")
+
+            if dry_run_fill:
+                from datetime import timedelta
+                today = datetime.now(timezone.utc)
+                sample = {
+                    "company_code": "TMTL",
+                    "eway_bill_no": "351099999901",
+                    "from_validity": today.strftime("%d/%m/%Y"),
+                    "to_validity": (today + timedelta(days=5)).strftime("%d/%m/%Y"),
+                }
+                await emit("Dry Run", "Filling entry form with sample data (Submit will NOT be clicked)")
+                for name, value in sample.items():
+                    try:
+                        loc = page.locator(e[name]).first
+                        await loc.fill(value)
+                        actual = (await loc.input_value()).strip()
+                        ok = actual == value
+                        add(f"eway.fill.{name}", "ok" if ok else "fail",
+                            f"Sample value entered and verified (dry run - not submitted)" if ok
+                            else f"Value mismatch after fill: expected '{value}', field shows '{actual}'")
+                    except Exception as ex:
+                        add(f"eway.fill.{name}", "fail", f"Could not fill field: {type(ex).__name__}")
+                add("eway.dry_run", "ok", "Dry run complete - form filled and verified, Submit was never clicked")
     finally:
         if browser:
             try:
