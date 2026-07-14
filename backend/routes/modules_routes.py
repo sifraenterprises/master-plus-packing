@@ -7,9 +7,9 @@ router = APIRouter(prefix="/modules", tags=["modules"])
 
 SEED_MODULES = [
     {"key": "packing", "name": "Packing Module", "description": "Packing slip studio — generate printable outside slips and inside lot cards from shipment details.", "status": "active", "enabled": True, "icon": "Package"},
-    {"key": "asn", "name": "ASN Automation", "description": "Advance Shipping Notice creation and submission automation for customer portals.", "status": "coming_soon", "enabled": False, "icon": "Truck"},
+    {"key": "asn", "name": "ASN Automation", "description": "Advance Shipping Notice creation and submission automation for customer portals.", "status": "active", "enabled": True, "icon": "Truck"},
     {"key": "eway-bill", "name": "E-Way Bill Automation", "description": "Uploads E-Way Bill numbers from Master Dispatch invoices to the TAFE Vendor Portal — batch runs, retries, test/live modes.", "status": "active", "enabled": True, "icon": "Receipt"},
-    {"key": "vendor-ack", "name": "Vendor Acknowledgement", "description": "Automated vendor acknowledgement processing and confirmation tracking.", "status": "coming_soon", "enabled": False, "icon": "Handshake"},
+    {"key": "vendor-ack", "name": "Vendor Acknowledgement", "description": "Automated vendor acknowledgement processing and confirmation tracking.", "status": "active", "enabled": True, "icon": "Handshake"},
     {"key": "dqms", "name": "DQMS Automation", "description": "Dispatch Quality Management System automation for quality documentation.", "status": "coming_soon", "enabled": False, "icon": "SealCheck"},
 ]
 
