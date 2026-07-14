@@ -21,6 +21,7 @@ from routes.admin_routes import router as admin_router, public_router
 from routes.master_dispatch_routes import router as master_dispatch_router
 from routes.eway_routes import router as eway_router
 from routes.vendor_ack_routes import router as vendor_ack_router
+from routes.asn_routes import router as asn_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ api_router.include_router(admin_router)
 api_router.include_router(master_dispatch_router)
 api_router.include_router(eway_router)
 api_router.include_router(vendor_ack_router)
+api_router.include_router(asn_router)
 api_router.include_router(public_router)
 app.include_router(api_router)
 
@@ -95,6 +97,9 @@ async def startup():
     await db.vendor_eway_acknowledgement.create_index("status")
     await db.vendor_eway_acknowledgement.create_index([("created_at", -1)])
     await db.plants.create_index("name", unique=True)
+    await db.asn_creation.create_index("master_dispatch_id", unique=True)
+    await db.asn_creation.create_index("status")
+    await db.asn_creation.create_index([("created_at", -1)])
     await db.transporters.create_index("name", unique=True)
     await db.automation_logs.create_index([("timestamp", -1)])
     await seed_user("ADMIN_USERNAME", "ADMIN_PASSWORD", "Administrator", "admin")

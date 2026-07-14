@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import asyncio
 from datetime import datetime, timezone
@@ -269,11 +270,6 @@ class PackingSlipAutomation(SimpleFormAutomation):
     section = "packing_slip"
 
 
-class ASNAutomation(SimpleFormAutomation):
-    module = "asn"
-    section = "asn"
-
-
 class VendorAckAutomation(PortalAutomationBase):
     """Vendor -> E Way Bill Acknowledgement automation. Uses actionability auto-waits
     (click/fill wait for visible+enabled) and explicit waits for dropdowns/grids - no fixed delays in live mode."""
@@ -367,6 +363,125 @@ class VendorAckAutomation(PortalAutomationBase):
         if "already" in msg.lower():
             raise AlreadyAcknowledgedError(msg)
         return {"before_submit": before, "message": msg or "E-Way Bill Acknowledged successfully"}
+
+
+class AsnValidationError(AutomationError):
+    pass
+
+
+class ASNAutomation(PortalAutomationBase):
+    """ASN Creation automation (ASNAutomationService): select PO, add parts, fill invoice,
+    attach PDI, Create ASN and capture the generated ASN number. Configurable selectors, no fixed waits live."""
+    module = "asn"
+
+    async def navigate_to_entry(self):
+        if self.is_test:
+            await asyncio.sleep(0.2)
+            await self.log("ASN Page Opened", "[TEST] Opened Create ASN tab - ASN Creation Form loaded")
+            return
+        s = self.selectors["asn"]
+        await self.page.click(s["menu_create_asn"])
+        await self.page.wait_for_selector(s["po_dropdown"], state="visible")
+        await self.log("ASN Page Opened", "Opened Create ASN tab - ASN Creation Form loaded")
+
+    def validate(self, data):
+        missing = [k for k in ("po_number", "invoice_no", "invoice_date", "transporter")
+                   if not str(data.get(k) or "").strip()]
+        if not data.get("items"):
+            missing.append("dispatch items")
+        if float(data.get("basic_amount") or 0) <= 0:
+            missing.append("basic_amount")
+        if float(data.get("total_amount") or 0) <= 0:
+            missing.append("total_amount")
+        if not data.get("pdi_path") or not os.path.exists(str(data.get("pdi_path") or "")):
+            missing.append("PDI file (upload it on the ASN record)")
+        if missing:
+            raise AsnValidationError("Validation failed - missing: " + ", ".join(missing))
+
+    async def run_asn(self, data):
+        """Full Create-ASN flow. Returns {'asn_number', 'before_submit'}."""
+        self.validate(data)
+        if self.is_test:
+            await asyncio.sleep(0.3)
+            po = str(data["po_number"]).upper()
+            if "NOPO" in po:
+                raise DropdownMatchError(f"PO Number '{data['po_number']}' not found in dropdown")
+            if "ERR" in po:
+                raise AutomationError("Portal server error (simulated)")
+            await self.log("PO Selected", f"[TEST] PO {data['po_number']} selected and searched")
+            for item in data["items"]:
+                await self.log("Parts Added", f"[TEST] Part {item['part_number']}: added to invoice, ASN Qty {item['quantity']}")
+            await self.log("Invoice Filled", f"[TEST] Invoice {data['invoice_no']} dt {data['invoice_date']} basic {data['basic_amount']} total {data['total_amount']}")
+            await self.log("Transporter Selected", f"[TEST] {data['transporter']}")
+            await self.log("PDF Attached", f"[TEST] PDI attached: {os.path.basename(data['pdi_path'])}")
+            shot = await self.capture_screenshot(f"asn_before_{data['invoice_no'].replace('/', '-')}")
+            import random
+            asn_no = f"ASN{datetime.now(timezone.utc):%y}{random.randint(100000, 999999)}"
+            await self.log("ASN Created", "[TEST] Create ASN clicked - success page loaded")
+            await self.log("ASN Number Captured", f"[TEST] {asn_no}")
+            return {"asn_number": asn_no, "before_submit": shot}
+
+        s = self.selectors["asn"]
+        await self.select_by_label(s["po_dropdown"], str(data["po_number"]))
+        await self.page.locator(s["po_search"]).first.click()
+        await self.log("PO Selected", f"PO {data['po_number']} selected and searched")
+        await self.page.wait_for_selector(s["parts_table"], state="visible", timeout=30000)
+        for item in data["items"]:
+            part, qty = item["part_number"], item["quantity"]
+            search_box = self.page.locator(s["part_search_input"]).first
+            if await search_box.count() > 0:
+                await search_box.fill(part)
+                await self.page.locator(s["part_search_go"]).first.click()
+            link = self.page.locator(s["part_add_link"].replace("{part}", part)).first
+            try:
+                await link.wait_for(state="visible", timeout=15000)
+            except Exception:
+                raise AutomationError(f"Part {part} not found in PO parts list")
+            await link.click()
+            await self.log("Parts Added", f"Part {part}: 'Click here to Add to Invoice' clicked")
+            if qty:
+                try:
+                    qty_input = self.page.locator(s["invoice_row_qty"].replace("{part}", part)).last
+                    await qty_input.wait_for(state="visible", timeout=10000)
+                    await qty_input.fill(str(int(qty) if float(qty) == int(qty) else qty))
+                    await self.log("Parts Added", f"Part {part}: ASN Qty set to {qty}")
+                except Exception:
+                    await self.log("Parts Added", f"Part {part}: could not set ASN Qty automatically - verify on portal", level="WARN")
+        await self.fill_and_verify(s["invoice_no"], data["invoice_no"])
+        await self.fill_and_verify(s["invoice_date"], data["invoice_date"])
+        await self.fill_and_verify(s["basic_amount"], str(data["basic_amount"]))
+        await self.fill_and_verify(s["total_amount"], str(data["total_amount"]))
+        for opt_field in ("cgst", "sgst", "igst", "no_of_cases"):
+            value = data.get(opt_field)
+            if value:
+                try:
+                    await self.fill_and_verify(s[opt_field], str(value))
+                except Exception:
+                    await self.log("Invoice Filled", f"Optional field {opt_field} could not be filled - verify on portal", level="WARN")
+        await self.log("Invoice Filled", f"Invoice {data['invoice_no']} details entered")
+        await self.select_by_label(s["transporter"], data["transporter"])
+        await self.log("Transporter Selected", data["transporter"])
+        await self.page.locator(s["pdi_file_input"]).first.set_input_files(data["pdi_path"])
+        await self.page.locator(s["attach_button"]).first.click()
+        await self.page.wait_for_selector(s["attach_success"], state="visible", timeout=60000)
+        await self.log("PDF Attached", f"PDI attached: {os.path.basename(data['pdi_path'])}")
+        shot = await self.capture_screenshot(f"asn_before_{data['invoice_no'].replace('/', '-')}")
+        await self.page.locator(s["create_asn_button"]).first.click()
+        try:
+            await self.page.wait_for_selector(s["asn_number_indicator"], state="visible", timeout=60000)
+        except Exception:
+            err = self.page.locator(s["error_indicator"])
+            if await err.count() > 0:
+                raise AutomationError((await err.first.inner_text()).strip() or "Portal returned an error on Create ASN")
+            raise AutomationError("ASN success page did not appear (portal timeout)")
+        text = (await self.page.locator(s["asn_number_indicator"]).first.inner_text()).strip()
+        match = re.search(r"ASN[A-Z0-9]+", text)
+        asn_no = match.group(0) if match else text
+        if not asn_no:
+            raise AutomationError("Could not capture the generated ASN Number")
+        await self.log("ASN Created", "Create ASN succeeded")
+        await self.log("ASN Number Captured", asn_no)
+        return {"asn_number": asn_no, "before_submit": shot}
 
 
 class DQMSAutomation(SimpleFormAutomation):

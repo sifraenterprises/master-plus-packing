@@ -30,16 +30,29 @@
     "error_indicator": ".error-message, #lblErrorMsg"
   },
   "asn": {
-    "menu_path": [
-      "text=ASN",
-      "text=ASN Creation"
-    ],
-    "fields": {
-      "invoice_no": "#txtInvoiceNo"
-    },
-    "submit": "#btnSubmit",
-    "success_indicator": ".success-message, #lblSuccess",
-    "error_indicator": ".error-message, #lblErrorMsg"
+    "menu_create_asn": "text=Create ASN",
+    "po_dropdown": "select[id*='PONumber' i], select[id*='PONo' i], select[name*='PONumber' i]",
+    "po_search": "input[type='submit'][value='Search'], button:has-text('Search'), [id*='btnSearch' i]",
+    "part_search_input": "input[id*='SearchPart' i], input[id*='PartNumber' i][type='text']",
+    "part_search_go": "input[type='submit'][value='Go'], button:has-text('Go'), [id*='btnGo' i]",
+    "parts_table": "table:has-text('Part Number')",
+    "part_add_link": "tr:has-text('{part}') a:has-text('Click here to Add to Invoice')",
+    "invoice_row_qty": "tr:has-text('{part}') input[id*='Qty' i], tr:has-text('{part}') input[type='text']",
+    "invoice_no": "input[id*='InvoiceNo' i], input[name*='InvoiceNo' i]",
+    "invoice_date": "input[id*='InvoiceDate' i], input[name*='InvoiceDate' i]",
+    "basic_amount": "input[id*='BasicAmount' i], input[name*='BasicAmount' i]",
+    "total_amount": "input[id*='TotalAmount' i], input[name*='TotalAmount' i]",
+    "cgst": "input[id*='CGST' i]",
+    "sgst": "input[id*='SGST' i]",
+    "igst": "input[id*='IGST' i]",
+    "no_of_cases": "input[id*='Cases' i]",
+    "transporter": "select[id*='Transporter' i], select[name*='Transporter' i]",
+    "pdi_file_input": "input[type='file']",
+    "attach_button": "input[type='submit'][value='Attach'], button:has-text('Attach'), [id*='btnAttach' i]",
+    "attach_success": "[id*='lblAttach' i], :text('uploaded successfully'), :text('Attached Successfully')",
+    "create_asn_button": "input[type='submit'][value='Create ASN'], button:has-text('Create ASN'), [id*='btnCreateASN' i]",
+    "asn_number_indicator": "[id*='lblASN' i], [id*='ASNNo' i], .success-message",
+    "error_indicator": ".error-message, [id*='lblError' i]"
   },
   "vendor_ack": {
     "menu_vendor_ack": "text=E Way Bill Acknowledgement",
@@ -53,7 +66,7 @@
     "submit": "input[type='submit'][value='Submit'], button:has-text('Submit'), [id*='btnSubmit' i]",
     "success_indicator": ".success-message, [id*='lblSuccess' i], [id*='lblMsg' i]",
     "error_indicator": ".error-message, [id*='lblError' i]",
-    "no_details_indicator": "[id*='lblNoRecord' i], text=No Records Found, text=No details found",
+    "no_details_indicator": "[id*='lblNoRecord' i], :text('No Records Found'), :text('No details found')",
     "already_ack_indicator": "text=Already Acknowledged"
   },
   "dqms": {
