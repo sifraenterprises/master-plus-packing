@@ -70,6 +70,14 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 - UI: From/To Validity are now inline date pickers directly in the E-Way table (auto-save per change), edit dialog uses date pickers, "E-way Bill Number Format — XXXX XXXX XXXX" note added like the portal
 - Data hygiene: deleting a master_dispatch record now cascades its eway_submission; cleaned 6 orphaned submissions; stats accurate
 
+## Implemented — Iteration 10 (June 2026): Vendor E-Way Bill Acknowledgement module
+- New sidebar group "Automation" (ASN Creation placeholder, E-Way Bill Entry, Vendor E-Way Bill Ack.); NavGroup generalized
+- Master Dispatch extended (additive): asn_number + plant fields (OCR prompt extracts both best-effort; MDForm has ASN input + Plant dropdown); plants master collection (configurable, seeded: "TMTL - Production - Bhopal-700", "TAFE MOTORS AND TRACTORS LTD.-7075") with GET/POST /api/master-dispatch/plants (POST admin-only)
+- New /api/vendor-ack/* (routes/vendor_ack_routes.py) + vendor_eway_acknowledgement collection (dispatch_id unique): records join, stats, run (single record, editable company/transporter/plant, read-only ASN from MD), retry (blocked for Completed), run-status, logs, screenshots serving
+- VendorAckAutomation class in shared automation.py: select_by_label (exact text + verify, never index), intelligent waits (no fixed delays live), full flow menu→dropdowns→ASN→Search→grid wait→checkbox→screenshot→Submit→success detect. TEST triggers: NOTFOUND→Pending "ASN Details Not Found" (retryable), ACKED→Completed "Already Acknowledged" (no retry), ERR→Retry Scheduled after 3 auto-retries, BADDROP→Failed "Dropdown Value Not Found". Screenshots before_submit/after_success/after_failure; execution_log per ack + automation_logs; execution_time_ms; vendor_ack_status synced onto master_dispatch record
+- Frontend /portal/modules/vendor-ack: stats, Acknowledgement Panel (record select auto-fills, Start Automation), grid (status colors, ack date, portal message, View Screenshot/View Log/Retry actions)
+- Testing iteration_7: backend 23/23, frontend 100%, regressions all pass; test data cleaned after run
+
 ## Backlog
 - P0: none outstanding
 - P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration)
