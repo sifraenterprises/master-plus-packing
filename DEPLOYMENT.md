@@ -112,7 +112,37 @@ Common issues:
 - **TAFE portal unreachable** → ask TAFE support to whitelist your VPS IP (`curl ifconfig.me`); until then use `AUTOMATION_MODE=test`.
 - **502 from nginx** → backend down; check `journalctl -u grewal-api -n 50`.
 
-## 7. Versioning & releases
+## 7. CI/CD — GitHub-based automated deployment
+
+Two workflows live in `.github/workflows/` (push the repo via **Save to GitHub** first):
+
+- **`ci.yml`** — on every push/PR: installs backend deps on Python 3.12 with a MongoDB service and boots the API (`/health` must pass), and runs `npm ci && npm run build` on Node 20. Broken builds never reach your VPS.
+- **`deploy.yml`** — deploys to your VPS over SSH by running `deploy/update.sh`, which now includes **automatic rollback**: if the post-update health check fails, it resets to the previous commit, rebuilds and restarts.
+
+Setup (GitHub → repo → Settings → Secrets and variables → Actions):
+
+| Type | Name | Value |
+|---|---|---|
+| Secret | `VPS_HOST` | your VPS IP or domain |
+| Secret | `VPS_USER` | e.g. `root` |
+| Secret | `VPS_SSH_KEY` | private key (`ssh-keygen -t ed25519`, add the public key to the VPS `~/.ssh/authorized_keys`) |
+| Variable | `AUTO_DEPLOY` | `true` to deploy on every push to main (otherwise trigger manually from the Actions tab) |
+| Variable | `APP_DIR` | app path on the VPS (default `/opt/grewal`) |
+
+After that, updates are simply: `git push origin main`.
+
+## 8. Alerts — production monitoring
+
+The API runs a watchdog (every 30 min, configurable via `ALERT_CHECK_INTERVAL`) and sends alerts for:
+**MongoDB down · disk > 85% (`ALERT_DISK_THRESHOLD`) · backup overdue (>30 h) · Playwright/Chromium missing · every failed ASN / E-Way / Vendor Ack automation run.**
+Alerts are throttled (same alert max once per 30 min) and sent via any configured channel:
+
+- **Telegram**: message @BotFather → `/newbot` → copy the token into `TELEGRAM_BOT_TOKEN`. Send your bot any message, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy `chat.id` into `TELEGRAM_CHAT_ID`.
+- **Email (SMTP)**: set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `ALERT_EMAIL_TO` (comma-separated allowed). Works with Hostinger mail (`smtp.hostinger.com:587`) or Gmail app passwords.
+
+Verify from the portal: **Settings → System Status → Alerts card → "Send Test Alert"**, then restart the API after editing `.env`.
+
+## 9. Versioning & releases
 
 - The running version lives in the `VERSION` file (shown in the portal footer and `/health`).
 - Every release: update `VERSION`, add an entry to `CHANGELOG.md`, then tag:
@@ -127,7 +157,7 @@ git tag v1.0.0 && git push origin v1.0.0
 cd /opt/grewal && git fetch --tags && git checkout v1.0.0 && bash deploy/update.sh
 ```
 
-## 8. Security checklist (already enforced by the app)
+## 10. Security checklist (already enforced by the app)
 
 - `JWT_SECRET` required — the API refuses to start without it (and all other required vars).
 - Passwords hashed with bcrypt; login brute-force lockout; JWT sessions expire after 8 h.

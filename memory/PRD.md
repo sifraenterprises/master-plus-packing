@@ -146,6 +146,15 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 - Testing iteration_12: backend 39/39 pytest, frontend 100% (0 console errors / 0 failed API calls across 17 route visits, all 5 Settings tabs, footer v1.0.0)
 - Known limitations: fresh Ubuntu VM cannot be provisioned inside this container (install.sh components validated individually); DQMS pending; live TAFE runs need VPS IP whitelisting; frontend route-level lazy-loading not enabled (CRA default single bundle, minified+gzipped)
 
+## Implemented — Iteration 20 (June 2026): CI/CD + production alerting
+- GitHub Actions: .github/workflows/ci.yml (backend: py3.12 + mongo service + boot/health check; frontend: npm ci + build on Node 20) and deploy.yml (SSH deploy via secrets VPS_HOST/VPS_USER/VPS_SSH_KEY, vars AUTO_DEPLOY/APP_DIR; manual dispatch supported) — YAML validated; real runs happen on GitHub after "Save to GitHub"
+- deploy/update.sh now has automatic rollback: records commit → pull/build/restart → health check (10×2s) → on failure git reset --hard + rebuild + restart
+- backend/alerts.py: Telegram (Bot API sendMessage via requests) + Email (stdlib SMTP w/ STARTTLS) channels, 30-min per-subject throttle, never-raise send_alert; env: ALERTS_ENABLED/TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID/SMTP_*/ALERT_EMAIL_*
+- Alert hooks: failed ASN / E-Way / Vendor Ack runs; alerts_watchdog (30 min, system_routes) checks MongoDB down, disk > ALERT_DISK_THRESHOLD (85%), backup overdue >30h, Playwright chromium missing — started at app startup
+- POST /api/system/alerts/test (admin) + Alerts card w/ "Send Test Alert" button in Settings → System Status; /system/status now includes alerts.channels
+- Docs: DEPLOYMENT.md §7 CI/CD setup (secrets table) + §8 Alerts (BotFather/getUpdates + SMTP instructions); .env.example updated (both copies)
+- Self-tested: test endpoint graceful when unconfigured, failed ASN run triggered alert hook without crash, watchdog boots, update.sh/workflow syntax OK, UI card verified via screenshot. NOT testable here: real Telegram/SMTP delivery (needs user tokens) and actual GitHub Action runs
+
 ## Backlog
 - P0: none outstanding
 - P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration); "Masters" section in Settings (admin UI to add/remove Plants & Transporters); DQMS Automation module; split automation.py into automation/ package (eway.py, asn.py, vendor_ack.py); VPS go-live checklist (playwright install chromium --with-deps, Validate Portal, TAFE IP whitelist)

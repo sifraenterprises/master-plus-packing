@@ -1,13 +1,17 @@
 import os
 import shutil
 import time
+import asyncio
+import logging
 from pathlib import Path
 from fastapi import APIRouter, Depends
 from database import db, client
 from auth import require_admin
+from alerts import send_alert, alert_channels
 
 router = APIRouter(prefix="/system", tags=["system"])
 STARTED_AT = time.time()
+logger = logging.getLogger(__name__)
 
 
 def _playwright_status():
@@ -84,5 +88,44 @@ async def system_status(user: dict = Depends(require_admin)):
         "cpu": {"load_1m": round(load[0], 2), "load_5m": round(load[1], 2), "cores": os.cpu_count()},
         "memory": _memory(),
         "backup": _last_backup(),
+        "alerts": {"channels": alert_channels()},
         "recent_failures": failures[:5],
     }
+
+
+@router.post("/alerts/test")
+async def test_alert(user: dict = Depends(require_admin)):
+    results = await send_alert("Test alert",
+                               f"Triggered by {user['username']} from the System Status panel. "
+                               "If you can read this, alerting works.", force=True)
+    return {"channels": alert_channels(), "results": results}
+
+
+async def alerts_watchdog():
+    """Periodic production checks: MongoDB, disk, backup freshness, Playwright."""
+    interval = int(os.environ.get("ALERT_CHECK_INTERVAL", "1800"))
+    disk_threshold = float(os.environ.get("ALERT_DISK_THRESHOLD", "85"))
+    while True:
+        try:
+            if any(alert_channels().values()):
+                try:
+                    await client.admin.command("ping")
+                except Exception as e:
+                    await send_alert("MongoDB is DOWN", f"Database ping failed: {str(e)[:200]}")
+                disk = shutil.disk_usage("/")
+                pct = disk.used * 100 / disk.total
+                if pct > disk_threshold:
+                    await send_alert("Disk space critical",
+                                     f"Disk usage at {pct:.1f}% (threshold {disk_threshold}%). "
+                                     f"Free: {round((disk.total - disk.used) / 1e9, 1)} GB.")
+                backup = _last_backup()
+                if backup["last"] is not None and not backup["ok"]:
+                    await send_alert("Backup overdue",
+                                     f"Last backup '{backup['detail']}' is {backup['age_hours']}h old (>30h). "
+                                     "Check /var/log/grewal/backup.log and the grewal-backup cron.")
+                pw = _playwright_status()
+                if not pw["ok"]:
+                    await send_alert("Playwright unavailable", pw["detail"])
+        except Exception as e:
+            logger.error("alerts_watchdog iteration failed: %s", e)
+        await asyncio.sleep(interval)

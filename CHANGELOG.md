@@ -22,5 +22,7 @@ First production-ready release.
 - Production hardening: `/health` endpoint, rotating logs (`/var/log/grewal`), security headers, env validation, configurable CORS.
 - Deployment kit under `deploy/` (install.sh, update.sh, backup.sh + nightly cron w/ 7-day retention, restore.sh, systemd unit, nginx config) — see DEPLOYMENT.md.
 - Settings → Masters (Plants & Transporters admin CRUD) and Settings → System Status (API/DB/Playwright/Gemini health, disk/CPU/RAM, queues, last backup, recent failures via GET /api/system/status).
+- CI/CD: GitHub Actions verify backend + frontend on every push (ci.yml); optional SSH auto-deploy to the VPS (deploy.yml) running update.sh with automatic health-check rollback.
+- Production alerting: Telegram + Email (SMTP) alerts for failed automations, MongoDB down, low disk, overdue backups and missing Playwright; test button in Settings → System Status.
 - Frontend builds cleanly on Node 20 with `npm install && npm run build` (React 18, Router 6, CRA 5).
 - Fully branded as Grewal Engineering Works.

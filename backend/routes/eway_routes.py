@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from database import db
 from models import utcnow
 from auth import get_current_user, require_admin, log_activity
+from alerts import send_alert
 from automation import (
     EWayBillAutomation, AutomationError, REQUIRED_ENV,
     load_selectors, save_selectors, validate_portal,
@@ -196,6 +197,8 @@ async def process_batch(ids: list[str], run_id: str, user: str, force_mode: str 
                 await set_submission(rec_id, {
                     "status": "Failed", "error": last_err, "screenshot": shot, "dispatch_no": d_id,
                 }, inc={"retry_count": 1})
+                await send_alert("E-Way Bill automation failed",
+                                 f"Dispatch {d_id}: {str(last_err)[:300]}")
             run_state["processed"] += 1
     except AutomationError as e:
         await log("Error", str(e), level="ERROR")

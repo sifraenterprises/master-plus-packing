@@ -165,6 +165,11 @@ async def startup():
     await seed_user("ADMIN_USERNAME", "ADMIN_PASSWORD", "Administrator", "admin")
     await seed_user("DISPATCH_USERNAME", "DISPATCH_PASSWORD", "Dispatch Operator", "dispatch")
     await seed_modules()
+    if os.environ.get("ALERTS_ENABLED", "true").lower() != "false":
+        from routes.system_routes import alerts_watchdog
+        import asyncio
+        asyncio.create_task(alerts_watchdog())
+        logger.info("Alerts watchdog started")
     logger.info("Startup complete: users seeded, modules seeded, indexes created")
 
 

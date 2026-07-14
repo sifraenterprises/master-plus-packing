@@ -15,6 +15,7 @@ from pathlib import Path
 from database import db
 from models import utcnow
 from auth import get_current_user, log_activity
+from alerts import send_alert
 from automation import ASNAutomation, AutomationError, AsnValidationError, DropdownMatchError, BatchAllocationError, SCREENSHOT_DIR
 
 router = APIRouter(prefix="/asn", tags=["asn"])
@@ -222,6 +223,9 @@ async def process_queue(ids: list[str], run_id: str, user: str):
                     )
                     await log("ASN Number Captured", f"{asn_number} linked to Master Dispatch - available to E-Way Bill & Vendor Ack modules", level="SUCCESS")
             await db.asn_creation.update_one({"_id": oid}, {"$set": update})
+            if status == "Failed":
+                await send_alert("ASN automation failed",
+                                 f"Invoice {doc.get('invoice_no')}: {str(error_message)[:300]}")
             run_state["processed"] += 1
     except AutomationError as e:
         logger.error(f"ASN queue aborted: {e}")

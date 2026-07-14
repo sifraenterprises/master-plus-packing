@@ -11,6 +11,7 @@ from pathlib import Path
 from database import db
 from models import utcnow
 from auth import get_current_user, log_activity
+from alerts import send_alert
 from automation import (
     VendorAckAutomation, AutomationError, DropdownMatchError,
     AsnNotFoundError, AlreadyAcknowledgedError,
@@ -151,6 +152,8 @@ async def process_ack(ack_id: str, run_id: str, user: str):
                 if shot:
                     screenshots["after_failure"] = shot
                 await log("Dropdown Mismatch", str(e), level="ERROR")
+                await send_alert("Vendor Acknowledgement failed",
+                                 f"Dispatch {ack['dispatch_no']}: {str(e)[:300]}")
                 break
             except AutomationError as e:
                 retryable_attempts += 1

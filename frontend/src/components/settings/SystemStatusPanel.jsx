@@ -75,6 +75,23 @@ export const SystemStatusPanel = () => {
         </Card>
         <Card title="CPU Load" ok={s.cpu.load_5m < s.cpu.cores} detail={`${s.cpu.load_1m} (1m) · ${s.cpu.load_5m} (5m) · ${s.cpu.cores} cores`} testid="status-cpu" />
         <Card title="Last Backup" ok={s.backup.ok} detail={s.backup.detail + (s.backup.age_hours != null ? ` · ${s.backup.age_hours}h ago` : "")} testid="status-backup" />
+        <Card title="Alerts" ok={s.alerts?.channels?.telegram || s.alerts?.channels?.email}
+              detail={`Telegram ${s.alerts?.channels?.telegram ? "on" : "off"} · Email ${s.alerts?.channels?.email ? "on" : "off"}`}
+              testid="status-alerts">
+          <Button variant="secondary" size="sm" data-testid="alerts-test-btn" className="rounded-sm h-6 mt-2 text-[10px]"
+                  onClick={async () => {
+                    try {
+                      const { data } = await api.post("/system/alerts/test");
+                      const r = data.results || {};
+                      const sent = Object.entries(r).filter(([, v]) => v === "sent").map(([k]) => k);
+                      sent.length
+                        ? window.alert(`Test alert sent via: ${sent.join(", ")}`)
+                        : window.alert(`No alert sent — configure TELEGRAM_* or SMTP_* in backend/.env (${JSON.stringify(r)})`);
+                    } catch (e) { window.alert("Test failed"); }
+                  }}>
+            Send Test Alert
+          </Button>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
