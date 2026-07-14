@@ -90,6 +90,14 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 - Phase 2 confirmed done: MD OCR (md_ocr.py) extracts po_number, asn_number, plant during invoice upload; shown on verification form; import skips MDs that already have an ASN
 - Testing iteration_8: backend 8/8, frontend 100%, regressions (MD, E-Way, Vendor Ack) pass; test seed data cleaned
 
+## Implemented — Iteration 13 (June 2026): Daily Dispatch Report (Master Dispatch)
+- New menu Master Dispatch → Daily Dispatch Report (/portal/master-dispatch/daily-report, DailyDispatchReport.jsx)
+- Filters: Dispatch Date (mandatory, matches invoice_date), Customer (optional), Company/Plant (optional) — dropdowns fed by GET /api/master-dispatch/daily-report/options (distinct values)
+- APIs (registered before /{record_id} to avoid shadowing): GET daily-report (rows Sr/Invoice/Qty/BOX + total_boxes, invalid date→400), daily-report/pdf (reportlab A4 portrait, black-bordered register layout, repeat header), daily-report/excel (openpyxl, Calibri 11, thin borders, merged header, Total row)
+- On-screen report: white paper-style A4 preview matching the physical dispatch register (GREWAL ENGINEERING WORKS / DAILY DISPATCH SUMMARY / DATE :- DD-MM-YYYY / SR.NO|INVOICE NUMBER|QTY|UNIT / Total :- XX BOX)
+- Print button: @media print CSS — A4 portrait, hides sidebar/nav/buttons/scrollbars, shows only report, thead repeats per page (table-header-group), Arial 11pt, B/W
+- Self-tested: API rows/totals/filters, PDF text content, Excel structure, frontend generate + render (5 rows, total 23); seed data cleaned
+
 ## Backlog
 - P0: none outstanding
 - P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration); "Masters" section in Settings (admin UI to add/remove Plants & Transporters); DQMS Automation module; split automation.py into automation/ package (eway.py, asn.py, vendor_ack.py); VPS go-live checklist (playwright install chromium --with-deps, Validate Portal, TAFE IP whitelist)

@@ -11,6 +11,7 @@ import CreateDispatch from "@/pages/master-dispatch/CreateDispatch";
 import DispatchList from "@/pages/master-dispatch/DispatchList";
 import BulkUpload from "@/pages/master-dispatch/BulkUpload";
 import SearchDispatch from "@/pages/master-dispatch/SearchDispatch";
+import DailyDispatchReport from "@/pages/master-dispatch/DailyDispatchReport";
 import ModulePlaceholder from "@/pages/ModulePlaceholder";
 import PackingModule from "@/pages/PackingModule";
 import EWayBillModule from "@/pages/EWayBillModule";
@@ -54,6 +55,7 @@ function App() {
             <Route path="master-dispatch/list" element={<DispatchList />} />
             <Route path="master-dispatch/bulk" element={<BulkUpload />} />
             <Route path="master-dispatch/search" element={<SearchDispatch />} />
+            <Route path="master-dispatch/daily-report" element={<DailyDispatchReport />} />
             <Route path="reports" element={<Reports />} />
             <Route path="modules/packing" element={<PackingModule />} />
             <Route path="modules/eway-bill" element={<EWayBillModule />} />

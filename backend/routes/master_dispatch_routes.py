@@ -332,6 +332,138 @@ async def md_export_pdf(
     )
 
 
+# ---------- Daily Dispatch Report ----------
+
+def _daily_query(date: str, customer: str = None, company: str = None):
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date or ""):
+        raise HTTPException(status_code=400, detail="date is required (YYYY-MM-DD)")
+    query = {"invoice_date": date}
+    if customer:
+        query["customer_name"] = {"$regex": re.escape(customer), "$options": "i"}
+    if company:
+        query["plant"] = {"$regex": re.escape(company), "$options": "i"}
+    return query
+
+
+def _dmy(date: str) -> str:
+    return f"{date[8:10]}-{date[5:7]}-{date[0:4]}"
+
+
+async def _daily_rows(date: str, customer: str = None, company: str = None):
+    docs = await db.master_dispatch.find(_daily_query(date, customer, company)).sort("invoice_number", 1).to_list(2000)
+    rows = [{"sr": i + 1, "invoice_number": d.get("invoice_number", ""),
+             "qty": int(d.get("boxes") or 0), "unit": "BOX"} for i, d in enumerate(docs)]
+    return rows, sum(r["qty"] for r in rows)
+
+
+@router.get("/daily-report/options")
+async def daily_report_options(user: dict = Depends(get_current_user)):
+    customers = sorted(c for c in await db.master_dispatch.distinct("customer_name") if c)
+    companies = sorted(c for c in await db.master_dispatch.distinct("plant") if c)
+    return {"customers": customers, "companies": companies}
+
+
+@router.get("/daily-report")
+async def daily_report(date: str, customer: str = None, company: str = None, user: dict = Depends(get_current_user)):
+    rows, total = await _daily_rows(date, customer, company)
+    return {"date": date, "date_display": _dmy(date), "rows": rows, "total_boxes": total}
+
+
+@router.get("/daily-report/excel")
+async def daily_report_excel(date: str, customer: str = None, company: str = None, user: dict = Depends(get_current_user)):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, Border, Side
+    rows, total = await _daily_rows(date, customer, company)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Daily Dispatch"
+    thin = Side(style="thin", color="000000")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    ws.merge_cells("A1:D1")
+    ws["A1"] = "GREWAL ENGINEERING WORKS"
+    ws["A1"].font = Font(name="Calibri", size=14, bold=True)
+    ws["A1"].alignment = Alignment(horizontal="center")
+    ws.merge_cells("A2:D2")
+    ws["A2"] = "DAILY DISPATCH SUMMARY"
+    ws["A2"].font = Font(name="Calibri", size=12, bold=True)
+    ws["A2"].alignment = Alignment(horizontal="center")
+    ws.merge_cells("A3:D3")
+    ws["A3"] = f"DATE :- {_dmy(date)}"
+    ws["A3"].font = Font(name="Calibri", size=11, bold=True)
+    ws["A3"].alignment = Alignment(horizontal="right")
+    ws.append(["SR.NO.", "INVOICE NUMBER", "QTY", "UNIT"])
+    for cell in ws[4]:
+        cell.font = Font(name="Calibri", size=11, bold=True)
+        cell.alignment = Alignment(horizontal="center")
+    for r in rows:
+        ws.append([r["sr"], r["invoice_number"], r["qty"], r["unit"]])
+    ws.append(["", "Total :-", total, "BOX"])
+    last = ws.max_row
+    for row in ws.iter_rows(min_row=1, max_row=last, min_col=1, max_col=4):
+        for cell in row:
+            cell.border = border
+            if cell.row > 3 and not cell.font.bold:
+                cell.font = Font(name="Calibri", size=11)
+    for cell in ws[last]:
+        cell.font = Font(name="Calibri", size=11, bold=True)
+    ws.column_dimensions["A"].width = 10
+    ws.column_dimensions["B"].width = 26
+    ws.column_dimensions["C"].width = 10
+    ws.column_dimensions["D"].width = 10
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    await log_activity(user["username"], "md_daily_report_excel", f"{date}: {len(rows)} invoices", "master_dispatch")
+    return StreamingResponse(
+        buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=daily_dispatch_{date}.xlsx"},
+    )
+
+
+@router.get("/daily-report/pdf")
+async def daily_report_pdf(date: str, customer: str = None, company: str = None, user: dict = Depends(get_current_user)):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+    rows, total = await _daily_rows(date, customer, company)
+    buf = io.BytesIO()
+    pdf_doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=15 * mm, bottomMargin=15 * mm,
+                                leftMargin=20 * mm, rightMargin=20 * mm)
+    data = [["GREWAL ENGINEERING WORKS", "", "", ""],
+            ["DAILY DISPATCH SUMMARY", "", "", ""],
+            ["", "", f"DATE :- {_dmy(date)}", ""],
+            ["SR.NO.", "INVOICE NUMBER", "QTY", "UNIT"]]
+    for r in rows:
+        data.append([str(r["sr"]), r["invoice_number"], str(r["qty"]), r["unit"]])
+    data.append(["", "Total :-", str(total), "BOX"])
+    table = Table(data, colWidths=[25 * mm, 75 * mm, 25 * mm, 25 * mm], repeatRows=4)
+    last = len(data) - 1
+    table.setStyle(TableStyle([
+        ("SPAN", (0, 0), (-1, 0)), ("SPAN", (0, 1), (-1, 1)), ("SPAN", (2, 2), (-1, 2)),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 11),
+        ("FONTNAME", (0, 0), (-1, 3), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 15),
+        ("FONTSIZE", (0, 1), (-1, 1), 12),
+        ("FONTNAME", (0, last), (-1, last), "Helvetica-Bold"),
+        ("ALIGN", (0, 0), (-1, 1), "CENTER"),
+        ("ALIGN", (2, 2), (2, 2), "RIGHT"),
+        ("ALIGN", (0, 3), (0, -1), "CENTER"),
+        ("ALIGN", (1, 3), (1, -1), "CENTER"),
+        ("ALIGN", (2, 3), (2, -1), "RIGHT"),
+        ("ALIGN", (1, last), (1, last), "RIGHT"),
+        ("GRID", (0, 0), (-1, -1), 0.8, colors.black),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    pdf_doc.build([table])
+    buf.seek(0)
+    await log_activity(user["username"], "md_daily_report_pdf", f"{date}: {len(rows)} invoices", "master_dispatch")
+    return StreamingResponse(buf, media_type="application/pdf",
+                             headers={"Content-Disposition": f"attachment; filename=daily_dispatch_{date}.pdf"})
+
+
 # ---------- CRUD ----------
 
 @router.post("")

@@ -13,6 +13,7 @@ const MD_SUBMENU = [
   { to: "/portal/master-dispatch/list", label: "Dispatch List" },
   { to: "/portal/master-dispatch/bulk", label: "Bulk Upload" },
   { to: "/portal/master-dispatch/search", label: "Search Dispatch" },
+  { to: "/portal/master-dispatch/daily-report", label: "Daily Dispatch Report" },
 ];
 
 const AUTOMATION_SUBMENU = [
