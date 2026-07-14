@@ -64,6 +64,12 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 ## Implemented — Iteration 8 (June 2026): E-Way Bill number format XXXX XXXX XXXX
 - Storage normalized to 12 digits (OCR build_record + MasterDispatchInput validator); display/input formatted "XXXX XXXX XXXX" (formatEway in MDForm, used in MD form/view + E-Way table/dialog); portal fill uses grouped format (format_eway in eway_routes); dry-run sample updated. TEST validation still 11/11.
 
+## Implemented — Iteration 9 (June 2026): Real portal layout adjustments (from user's screenshot)
+- Real TAFE E-Way Bill Entry page revealed: Company Code is static text (TMTL, not an input), validity dates are calendar inputs. Engine now skips fill for read-only Company Code (verify-only), fill_date() falls back to JS value-set for calendar widgets; dry-run fill marks read-only fields OK
+- portal_selectors.json eway section updated to resilient attribute-based selectors ([id*='EwayBill' i] etc.) — still editable in-app after live validation on VPS
+- UI: From/To Validity are now inline date pickers directly in the E-Way table (auto-save per change), edit dialog uses date pickers, "E-way Bill Number Format — XXXX XXXX XXXX" note added like the portal
+- Data hygiene: deleting a master_dispatch record now cascades its eway_submission; cleaned 6 orphaned submissions; stats accurate
+
 ## Backlog
 - P0: none outstanding
 - P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration)

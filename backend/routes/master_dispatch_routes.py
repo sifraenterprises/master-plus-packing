@@ -348,6 +348,7 @@ async def delete_md(record_id: str, user: dict = Depends(require_admin)):
     doc = await db.master_dispatch.find_one_and_delete({"_id": ObjectId(record_id)})
     if not doc:
         raise HTTPException(status_code=404, detail="Record not found")
+    await db.eway_submissions.delete_one({"record_id": record_id})
     await log_activity(user["username"], "md_deleted", doc.get("dispatch_no", record_id), "master_dispatch")
     return {"message": "Record deleted"}
 

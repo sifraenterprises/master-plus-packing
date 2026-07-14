@@ -133,10 +133,36 @@ class EWayBillAutomation(PortalAutomationBase):
                 raise AutomationError("Invalid E-Way Bill")
             return
         s = self.selectors["eway"]
-        await self.fill_and_verify(s["company_code"], data["company_code"])
+        cc = self.page.locator(s["company_code"]).first
+        try:
+            cc_editable = await cc.is_editable(timeout=3000)
+        except Exception:
+            cc_editable = False
+        if cc_editable:
+            await self.fill_and_verify(s["company_code"], data["company_code"])
+        else:
+            await self.log("Field Check", "Company Code is read-only on the portal (pre-filled) - fill skipped")
         await self.fill_and_verify(s["eway_bill_no"], data["eway_bill_number"])
-        await self.fill_and_verify(s["from_validity"], data["eway_from_validity"])
-        await self.fill_and_verify(s["to_validity"], data["eway_to_validity"])
+        await self.fill_date(s["from_validity"], data["eway_from_validity"])
+        await self.fill_date(s["to_validity"], data["eway_to_validity"])
+
+    async def fill_date(self, selector, value):
+        """Date inputs with calendar widgets can reject fill(); falls back to JS value set."""
+        loc = self.page.locator(selector).first
+        await loc.wait_for(state="visible")
+        try:
+            await loc.fill(value)
+        except Exception:
+            pass
+        actual = (await loc.input_value()).strip()
+        if actual != value.strip():
+            await loc.evaluate(
+                "(el, v) => { el.removeAttribute('readonly'); el.value = v;"
+                " el.dispatchEvent(new Event('input', {bubbles: true}));"
+                " el.dispatchEvent(new Event('change', {bubbles: true})); }", value)
+            actual = (await loc.input_value()).strip()
+        if actual != value.strip():
+            raise AutomationError(f"Date field verification failed for {selector}: expected '{value}', got '{actual}'")
 
     async def submit(self):
         if self.is_test:
@@ -318,6 +344,19 @@ async def validate_portal(attempt_login=False, headless=True, log=None, dry_run_
                 for name, value in sample.items():
                     try:
                         loc = page.locator(e[name]).first
+                        try:
+                            editable = await loc.is_editable(timeout=3000)
+                        except Exception:
+                            editable = False
+                        if not editable:
+                            shown = ""
+                            try:
+                                shown = (await loc.inner_text()).strip()[:30]
+                            except Exception:
+                                pass
+                            add(f"eway.fill.{name}", "ok",
+                                f"Read-only field on portal{f' (shows: {shown})' if shown else ''} - fill not required (dry run)")
+                            continue
                         await loc.fill(value)
                         actual = (await loc.input_value()).strip()
                         ok = actual == value

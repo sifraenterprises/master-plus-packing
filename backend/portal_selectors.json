@@ -9,13 +9,13 @@
   "eway": {
     "menu_eway_bill": "text=E-Way Bill",
     "menu_eway_entry": "text=E-Way Bill Entry",
-    "company_code": "#txtCompanyCode",
-    "eway_bill_no": "#txtEWayBillNo",
-    "from_validity": "#txtEWayFromValidity",
-    "to_validity": "#txtEWayToValidity",
-    "submit": "#btnSubmit",
-    "success_indicator": ".success-message, #lblSuccess",
-    "error_indicator": ".error-message, #lblErrorMsg"
+    "company_code": "[id*='CompanyCode' i], [name*='CompanyCode' i]",
+    "eway_bill_no": "input[id*='EwayBill' i], input[id*='EWayBillNo' i], input[name*='EwayBill' i]",
+    "from_validity": "input[id*='FromValidity' i], input[id*='FromDate' i], input[name*='FromValidity' i]",
+    "to_validity": "input[id*='ToValidity' i], input[id*='ToDate' i], input[name*='ToValidity' i]",
+    "submit": "input[type='submit'][value='Submit'], button:has-text('Submit'), [id*='btnSubmit' i]",
+    "success_indicator": ".success-message, [id*='lblSuccess' i], [id*='lblMsg' i]",
+    "error_indicator": ".error-message, [id*='lblError' i]"
   },
   "packing_slip": {
     "menu_path": [

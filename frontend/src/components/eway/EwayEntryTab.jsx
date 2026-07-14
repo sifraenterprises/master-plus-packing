@@ -17,6 +17,15 @@ import api, { apiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { formatEway } from "@/components/md/MDForm";
 
+const toISO = (dmy) => {
+  const m = (dmy || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
+};
+const toDMY = (iso) => {
+  const m = (iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+};
+
 const STATUS_CLS = {
   Pending: "border-amber-500/50 text-amber-400",
   Completed: "border-emerald-500/50 text-emerald-400",
@@ -132,6 +141,21 @@ export default function EwayEntryTab() {
     }
   };
 
+  const saveValidity = async (r, field, isoVal) => {
+    const dmy = toDMY(isoVal);
+    setRecords((recs) => recs.map((x) => (x.id === r.id ? { ...x, [field]: dmy } : x)));
+    try {
+      await api.put(`/eway/records/${r.id}`, {
+        company_code: r.company_code,
+        from_validity: field === "from_validity" ? dmy : r.from_validity,
+        to_validity: field === "to_validity" ? dmy : r.to_validity,
+      });
+    } catch (err) {
+      toast.error(apiError(err));
+    }
+  };
+
+
   const toggleSelect = (id) => setSelected((sel) => (sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]));
   const pendingIds = records.filter((r) => r.eway_status === "Pending").map((r) => r.id);
   const allSelected = pendingIds.length > 0 && pendingIds.every((id) => selected.includes(id));
@@ -171,9 +195,14 @@ export default function EwayEntryTab() {
   return (
     <div className="space-y-6" data-testid="eway-entry-tab">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <p className="text-sm text-muted-foreground">
-          TAFE Vendor Portal · E-Way Bill → E-Way Bill Entry — records sourced from Master Dispatch
-        </p>
+        <div>
+          <p className="text-sm text-muted-foreground">
+            TAFE Vendor Portal · E-Way Bill → E-Way Bill Entry — records sourced from Master Dispatch
+          </p>
+          <p className="text-xs font-semibold text-sky-400 mt-1" data-testid="eway-format-note">
+            E-way Bill Number Format — XXXX XXXX XXXX
+          </p>
+        </div>
         <button
           onClick={toggleMode}
           data-testid="eway-mode-toggle"
@@ -239,7 +268,7 @@ export default function EwayEntryTab() {
                   <input type="checkbox" data-testid="eway-select-all" checked={allSelected}
                          onChange={() => setSelected(allSelected ? [] : pendingIds)} />
                 </TableHead>
-                {["Dispatch No", "Invoice No", "E-Way Bill", "Validity", "Status", "Error", "Retry", "Actions"].map((h) => (
+                {["Dispatch No", "Invoice No", "E-Way Bill", "From Validity", "To Validity", "Status", "Error", "Retry", "Actions"].map((h) => (
                   <TableHead key={h} className="text-[10px] uppercase tracking-[0.15em] whitespace-nowrap">{h}</TableHead>
                 ))}
               </TableRow>
@@ -247,7 +276,7 @@ export default function EwayEntryTab() {
             <TableBody>
               {records.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-10" data-testid="eway-no-records">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-10" data-testid="eway-no-records">
                     No records found. Create dispatches in Master Dispatch first.
                   </TableCell>
                 </TableRow>
@@ -262,8 +291,23 @@ export default function EwayEntryTab() {
                     <TableCell className="font-mono text-xs whitespace-nowrap">
                       {r.eway_bill_number ? (formatEway(r.eway_bill_number) || r.eway_bill_number) : <span className="text-muted-foreground/50">blank</span>}
                     </TableCell>
-                    <TableCell className="font-mono text-[10px] whitespace-nowrap text-muted-foreground">
-                      {r.from_validity || r.to_validity ? `${r.from_validity || "—"} → ${r.to_validity || "—"}` : <span className="text-amber-400">not set</span>}
+                    <TableCell>
+                      <input
+                        type="date"
+                        value={toISO(r.from_validity)}
+                        onChange={(e) => saveValidity(r, "from_validity", e.target.value)}
+                        data-testid={`eway-from-validity-${r.dispatch_no}`}
+                        className="h-8 w-[135px] rounded-sm bg-input border border-border text-[11px] px-1.5 font-mono focus:outline-none focus:ring-1 focus:ring-primary [color-scheme:dark]"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <input
+                        type="date"
+                        value={toISO(r.to_validity)}
+                        onChange={(e) => saveValidity(r, "to_validity", e.target.value)}
+                        data-testid={`eway-to-validity-${r.dispatch_no}`}
+                        className="h-8 w-[135px] rounded-sm bg-input border border-border text-[11px] px-1.5 font-mono focus:outline-none focus:ring-1 focus:ring-primary [color-scheme:dark]"
+                      />
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={`rounded-sm text-[9px] uppercase ${STATUS_CLS[r.eway_status] || ""}`}>
@@ -329,12 +373,12 @@ export default function EwayEntryTab() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground block mb-1">From Validity (DD/MM/YYYY)</label>
-                  <Input value={editRec.from_validity} placeholder="13/07/2026" onChange={(e) => setEditRec({ ...editRec, from_validity: e.target.value })} data-testid="eway-edit-from" className="h-9 rounded-sm bg-input border-border font-mono" />
+                  <label className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground block mb-1">E-way From Validity date</label>
+                  <input type="date" value={toISO(editRec.from_validity)} onChange={(e) => setEditRec({ ...editRec, from_validity: toDMY(e.target.value) })} data-testid="eway-edit-from" className="h-9 w-full rounded-sm bg-input border border-border font-mono text-sm px-2 focus:outline-none focus:ring-1 focus:ring-primary [color-scheme:dark]" />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground block mb-1">To Validity (DD/MM/YYYY)</label>
-                  <Input value={editRec.to_validity} placeholder="18/07/2026" onChange={(e) => setEditRec({ ...editRec, to_validity: e.target.value })} data-testid="eway-edit-to" className="h-9 rounded-sm bg-input border-border font-mono" />
+                  <label className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground block mb-1">E-way To Validity date</label>
+                  <input type="date" value={toISO(editRec.to_validity)} onChange={(e) => setEditRec({ ...editRec, to_validity: toDMY(e.target.value) })} data-testid="eway-edit-to" className="h-9 w-full rounded-sm bg-input border border-border font-mono text-sm px-2 focus:outline-none focus:ring-1 focus:ring-primary [color-scheme:dark]" />
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-1">
