@@ -307,7 +307,7 @@ async def md_export_pdf(
     pdf_doc = SimpleDocTemplate(buf, pagesize=landscape(A4), topMargin=15 * mm, bottomMargin=15 * mm)
     styles = getSampleStyleSheet()
     elements = [
-        Paragraph("Grewal Engineering Work — Master Dispatch Report", styles["Title"]),
+        Paragraph("Grewal Engineering Works — Master Dispatch Report", styles["Title"]),
         Paragraph(f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} | Records: {len(docs)}", styles["Normal"]),
         Spacer(1, 8),
     ]

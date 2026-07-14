@@ -115,6 +115,14 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 - Fixed: critical dialog state-reset bug (poll re-created req object wiping inputs); VendorAck option hydration warning
 - Testing iteration_10: backend 16/16; frontend re-verified after fix (manual 15+20+5 split across 3 batches → Completed with ASN, values survive polling)
 
+## Implemented — Iteration 16 (June 2026): Full rebrand to Grewal Engineering Works
+- Browser: title/meta/OG tags → "Grewal Engineering Works – TAFE Vendor Automation System"; G favicon retained
+- Login: "Grewal Engineering Works" + subtitle "TAFE Vendor Automation Portal" (desktop + mobile header); Sidebar: "GREWAL ENGINEERING WORKS / TAFE Vendor Automation"; Dashboard h1 "Grewal Engineering Works Dashboard"; portal footer "© {year} Grewal Engineering Works. All Rights Reserved."; loading spinner now shows "Loading..."
+- Backend: fixed "Grewal Engineering Work"→"Works" everywhere (FastAPI title, API root msg, models default, admin fallback, MD + Dispatch PDF report titles)
+- Removed all Emergent references from source: legacy Dispatch Entry OCR migrated from emergentintegrations/EMERGENT_LLM_KEY to google-genai/GEMINI_API_KEY (same as md_ocr); testId constants cleaned
+- KEPT (functional, not visible branding): REACT_APP_BACKEND_URL preview domain, landing Gallery image CDN URLs, .emergent platform folder
+- Verified: zero "emergent" in rendered UI text on landing/login/dashboard; tab title + footer confirmed via browser
+
 ## Backlog
 - P0: none outstanding
 - P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration); "Masters" section in Settings (admin UI to add/remove Plants & Transporters); DQMS Automation module; split automation.py into automation/ package (eway.py, asn.py, vendor_ack.py); VPS go-live checklist (playwright install chromium --with-deps, Validate Portal, TAFE IP whitelist)

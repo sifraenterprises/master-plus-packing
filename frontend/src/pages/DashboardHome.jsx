@@ -61,9 +61,10 @@ export default function DashboardHome() {
       <p className="text-xs uppercase tracking-[0.3em] text-primary mb-2">
         {user?.role === "admin" ? "Administrator Dashboard" : "Dispatch Dashboard"}
       </p>
-      <h1 className="text-3xl sm:text-4xl font-black tracking-tight mb-8">
-        Welcome, {user?.name?.split(" ")[0]}
+      <h1 className="text-3xl sm:text-4xl font-black tracking-tight mb-2">
+        Grewal Engineering Works Dashboard
       </h1>
+      <p className="text-sm text-muted-foreground mb-8">Welcome, {user?.name?.split(" ")[0]}</p>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 border border-border rounded-sm overflow-hidden mb-10">
         {stats.map((s, i) => (

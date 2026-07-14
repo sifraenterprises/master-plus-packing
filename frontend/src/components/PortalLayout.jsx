@@ -101,8 +101,8 @@ export default function PortalLayout() {
             <Wrench size={20} weight="bold" className="text-primary-foreground" />
           </div>
           <div>
-            <p className="font-black text-xs tracking-tight leading-none">GREWAL ENGINEERING</p>
-            <p className="text-[9px] uppercase tracking-[0.25em] text-muted-foreground mt-0.5">Automation Portal</p>
+            <p className="font-black text-xs tracking-tight leading-none">GREWAL ENGINEERING WORKS</p>
+            <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground mt-0.5">TAFE Vendor Automation</p>
           </div>
         </Link>
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
@@ -173,6 +173,11 @@ export default function PortalLayout() {
         <main className="flex-1 p-4 sm:p-8">
           <Outlet />
         </main>
+        <footer className="border-t border-border px-4 sm:px-8 py-3 no-print" data-testid="portal-footer">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground text-center">
+            © {new Date().getFullYear()} Grewal Engineering Works. All Rights Reserved.
+          </p>
+        </footer>
       </div>
     </div>
   );

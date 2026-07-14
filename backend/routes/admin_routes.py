@@ -67,6 +67,6 @@ async def update_profile(body: CompanyProfile, admin: dict = Depends(require_adm
 async def public_profile():
     doc = await db.company_profile.find_one({"_id": "profile"})
     if not doc or not doc.get("published"):
-        return {"published": False, "company_name": "Grewal Engineering Work"}
+        return {"published": False, "company_name": "Grewal Engineering Works"}
     doc.pop("_id", None)
     return CompanyProfile(**doc).model_dump()

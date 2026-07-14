@@ -93,7 +93,7 @@ class BulkDispatchInput(BaseModel):
 
 
 class CompanyProfile(BaseModel):
-    company_name: str = "Grewal Engineering Work"
+    company_name: str = "Grewal Engineering Works"
     introduction: str = ""
     vision: str = ""
     mission: str = ""

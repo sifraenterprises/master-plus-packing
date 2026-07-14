@@ -77,7 +77,7 @@ const Footer = () => (
     <div className="border-t border-[#262626]">
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-6 flex flex-col sm:flex-row justify-between gap-2">
         <p className="text-xs text-slate-600">
-          © {new Date().getFullYear()} Grewal Engineering Works. All rights reserved.
+          © {new Date().getFullYear()} Grewal Engineering Works. All Rights Reserved.
         </p>
         <p className="text-xs text-slate-600 uppercase tracking-widest">Manufacturing Excellence Since 1972</p>
       </div>

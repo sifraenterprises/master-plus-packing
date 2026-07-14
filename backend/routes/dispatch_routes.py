@@ -80,15 +80,16 @@ async def extract_invoice(file: UploadFile = File(...), user: dict = Depends(get
         "uploaded_by": user["username"], "uploaded_at": utcnow().isoformat(),
     })
 
-    from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType
     try:
-        chat = LlmChat(
-            api_key=os.environ["EMERGENT_LLM_KEY"],
-            session_id=f"invoice-extract-{file_id}",
-            system_message="You are an expert invoice data extraction engine for an Indian engineering company. You always return strict JSON.",
-        ).with_model("gemini", "gemini-2.5-flash")
-        pdf = FileContentWithMimeType(file_path=str(path), mime_type="application/pdf")
-        raw = await chat.send_message(UserMessage(text=EXTRACTION_PROMPT, file_contents=[pdf]))
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+        resp = await client.aio.models.generate_content(
+            model=os.environ.get("GEMINI_MODEL", "gemini-flash-latest"),
+            contents=[types.Part.from_bytes(data=content, mime_type="application/pdf"),
+                      "You are an expert invoice data extraction engine for an Indian engineering company. You always return strict JSON.\n\n" + EXTRACTION_PROMPT],
+        )
+        raw = resp.text or ""
     except Exception as e:
         logger.error(f"AI extraction failed: {e}")
         await log_activity(user["username"], "extraction_failed", str(e)[:200], "dispatch")
@@ -253,7 +254,7 @@ async def export_pdf(
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), topMargin=15 * mm, bottomMargin=15 * mm)
     styles = getSampleStyleSheet()
     elements = [
-        Paragraph("Grewal Engineering Work — Dispatch Report", styles["Title"]),
+        Paragraph("Grewal Engineering Works — Dispatch Report", styles["Title"]),
         Paragraph(f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} | Records: {len(docs)}", styles["Normal"]),
         Spacer(1, 8),
     ]

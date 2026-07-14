@@ -26,14 +26,14 @@ from routes.asn_routes import router as asn_router
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Grewal Engineering Work — Automation Portal")
+app = FastAPI(title="Grewal Engineering Works — Automation Portal")
 
 api_router = APIRouter(prefix="/api")
 
 
 @api_router.get("/")
 async def root():
-    return {"message": "Grewal Engineering Work API", "status": "online"}
+    return {"message": "Grewal Engineering Works API", "status": "online"}
 
 
 api_router.include_router(auth_router)

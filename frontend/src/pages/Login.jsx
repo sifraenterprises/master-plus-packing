@@ -46,9 +46,10 @@ export default function Login() {
             <br />
             Engineering
             <br />
-            <span className="text-primary">Work</span>
+            <span className="text-primary">Works</span>
           </h1>
-          <p className="text-muted-foreground mt-6 leading-relaxed max-w-sm">
+          <p className="text-primary text-sm uppercase tracking-[0.25em] mt-4 font-semibold">TAFE Vendor Automation Portal</p>
+          <p className="text-muted-foreground mt-4 leading-relaxed max-w-sm">
             Central automation portal — dispatch, packing, ASN, E-Way bills and quality management in one secure platform.
           </p>
         </div>
@@ -61,8 +62,9 @@ export default function Login() {
             <div className="w-10 h-10 bg-primary flex items-center justify-center rounded-sm">
               <Wrench size={22} weight="bold" className="text-primary-foreground" />
             </div>
-            <p className="font-black tracking-tight">GREWAL ENGINEERING WORK</p>
+            <p className="font-black tracking-tight">GREWAL ENGINEERING WORKS</p>
           </div>
+          <p className="lg:hidden text-[10px] uppercase tracking-[0.25em] text-primary -mt-7 mb-8">TAFE Vendor Automation Portal</p>
           <p className="text-xs uppercase tracking-[0.3em] text-primary mb-3">Secure Access</p>
           <h2 className="text-3xl font-black tracking-tight mb-2">Portal Login</h2>
           <p className="text-sm text-muted-foreground mb-10">Sign in with your assigned credentials.</p>
