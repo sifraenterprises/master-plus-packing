@@ -321,6 +321,7 @@ async def dispatch_workflow(md_id: str, user: dict = Depends(get_current_user)):
     asn = await db.asn_creation.find_one({"master_dispatch_id": md_id})
     ew = await db.eway_submissions.find_one({"record_id": md_id})
     va = await db.vendor_eway_acknowledgement.find_one({"dispatch_id": md_id})
+    batch_allocs = await db.asn_batch_allocations.find({"dispatch_id": md_id}).sort("created_at", -1).to_list(50)
     file_id = md.get("split_file_id") or md.get("source_file_id") or ""
     steps = [
         {"key": "master_dispatch", "label": "Master Dispatch", "status": "Completed",
@@ -337,6 +338,9 @@ async def dispatch_workflow(md_id: str, user: dict = Depends(get_current_user)):
          "doc_no": md.get("asn_number") or (asn or {}).get("asn_number", ""),
          "timestamp": (asn or {}).get("completed_at") or (asn or {}).get("updated_at", ""),
          "detail": (asn or {}).get("error_message") or ("ASN captured from portal" if md.get("asn_number") else "Awaiting ASN creation"),
+         "batches": [{"part_number": b.get("part_number", ""), "batch_number": b.get("batch_number", ""),
+                      "allocated_quantity": b.get("allocated_quantity", 0),
+                      "batch_considerable": b.get("batch_considerable", "")} for b in batch_allocs],
          "download": ""},
         {"key": "eway", "label": "E-Way Bill",
          "status": (ew or {}).get("status") if (ew or {}).get("status") in STATUS_VALUES else "Pending",

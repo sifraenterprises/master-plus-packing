@@ -59,6 +59,15 @@ export const WorkflowDialog = ({ record, onClose }) => {
                     </div>
                     {s.doc_no && <p className="text-xs font-mono text-primary mt-0.5">{s.doc_no}</p>}
                     <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{s.detail}</p>
+                    {s.batches?.length > 0 && (
+                      <div className="mt-1.5 border border-border rounded-sm overflow-hidden" data-testid="workflow-batches">
+                        {s.batches.map((b, bi) => (
+                          <p key={bi} className="text-[10px] font-mono px-2 py-1 border-b border-border last:border-0 bg-secondary/40">
+                            {b.part_number} · {b.batch_number} → <span className="text-primary">{b.allocated_quantity}</span> ({b.batch_considerable})
+                          </p>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex items-center gap-3 mt-1">
                       {s.timestamp && <p className="text-[10px] font-mono text-muted-foreground">{String(s.timestamp).slice(0, 19).replace("T", " ")}</p>}
                       {s.download && (

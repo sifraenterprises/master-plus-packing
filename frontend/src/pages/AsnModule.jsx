@@ -6,12 +6,15 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { BatchAllocationDialog } from "@/components/asn/BatchAllocationDialog";
+import { AllocationHistoryDialog } from "@/components/asn/AllocationHistoryDialog";
 import api, { apiError } from "@/lib/api";
 
 const STATUS_CLS = {
   Draft: "border-zinc-500/50 text-zinc-400",
   Ready: "border-sky-500/50 text-sky-400",
   Processing: "border-amber-500/50 text-amber-400",
+  "Awaiting Allocation": "border-orange-500/60 text-orange-400",
   Completed: "border-emerald-500/50 text-emerald-400",
   Failed: "border-red-500/50 text-red-400",
 };
@@ -35,6 +38,8 @@ export default function AsnModule() {
   const [editRec, setEditRec] = useState(null);
   const [logView, setLogView] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [allocReq, setAllocReq] = useState(null);
+  const [allocHistory, setAllocHistory] = useState(false);
   const pollRef = useRef(null);
   const pdiRef = useRef(null);
   const pdiTarget = useRef(null);
@@ -55,19 +60,23 @@ export default function AsnModule() {
   useEffect(() => {
     load();
     api.get("/master-dispatch/transporters").then((r) => setTransporters(r.data)).catch(() => {});
+    api.get("/asn/run-status").then((r) => { if (r.data.running) startPoll(); }).catch(() => {});
     return () => pollRef.current && clearInterval(pollRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const startPoll = () => {
     setRunning(true);
+    if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       try {
         const { data } = await api.get("/asn/run-status");
         setRunInfo(data);
+        setAllocReq(data.awaiting_allocation || null);
         if (!data.running) {
           clearInterval(pollRef.current);
           setRunning(false);
+          setAllocReq(null);
           load();
           toast.success("ASN automation queue finished");
         }
@@ -177,13 +186,16 @@ export default function AsnModule() {
         <Button variant="secondary" onClick={() => load()} data-testid="asn-refresh" className="rounded-sm gap-1">
           <ArrowsClockwise size={14} /> Refresh
         </Button>
+        <Button variant="secondary" onClick={() => setAllocHistory(true)} data-testid="asn-batch-allocations" className="rounded-sm gap-1">
+          <ListMagnifyingGlass size={14} /> Batch Allocations
+        </Button>
         <Button variant="secondary" onClick={exportExcel} data-testid="asn-export" className="rounded-sm gap-1">
           <FileXls size={14} /> Export Excel
         </Button>
         <div className="flex-1" />
         <select value={filters.status} onChange={(e) => { const f = { ...filters, status: e.target.value }; setFilters(f); load(f); }}
                 data-testid="asn-filter-status" className="h-9 rounded-sm bg-input border border-border text-xs px-2 focus:outline-none">
-          {["All", "Draft", "Ready", "Processing", "Completed", "Failed"].map((s) => <option key={s}>{s}</option>)}
+          {["All", "Draft", "Ready", "Processing", "Awaiting Allocation", "Completed", "Failed"].map((s) => <option key={s}>{s}</option>)}
         </select>
         <div className="relative">
           <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -196,6 +208,7 @@ export default function AsnModule() {
       {running && runInfo && (
         <div className="border border-primary/40 bg-card rounded-sm px-4 py-2.5 text-xs font-mono text-primary" data-testid="asn-run-progress">
           Queue running (one ASN at a time)… {runInfo.processed}/{runInfo.total} done{runInfo.current ? ` — current: ${runInfo.current}` : ""}
+          {allocReq ? " — ⏸ paused: batch allocation required" : ""}
         </div>
       )}
 
@@ -317,6 +330,8 @@ export default function AsnModule() {
           </div>
         </DialogContent>
       </Dialog>
+      <BatchAllocationDialog req={allocReq} onDone={() => setAllocReq(null)} />
+      <AllocationHistoryDialog open={allocHistory} onClose={() => setAllocHistory(false)} />
     </div>
   );
 }

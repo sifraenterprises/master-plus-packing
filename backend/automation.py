@@ -369,10 +369,78 @@ class AsnValidationError(AutomationError):
     pass
 
 
+class BatchAllocationError(AutomationError):
+    """No-retry error for cancelled/timed-out batch allocations."""
+    pass
+
+
 class ASNAutomation(PortalAutomationBase):
     """ASN Creation automation (ASNAutomationService): select PO, add parts, fill invoice,
     attach PDI, Create ASN and capture the generated ASN number. Configurable selectors, no fixed waits live."""
     module = "asn"
+    allocation_cb = None  # async (part, asn_qty, batches) -> allocations; set by route layer
+
+    def _simulate_batches(self, part, qty):
+        up = part.upper()
+        qty = float(qty or 0)
+        if "LOW" in up:
+            return [{"batch_no": f"TV-{part}-B1", "batch_qty": qty, "available_qty": max(1, int(qty) - 1), "considerable": ""}]
+        if "MULTI" in up:
+            half = max(1, int(qty // 2))
+            return [{"batch_no": f"TV-{part}-B1", "batch_qty": half * 2, "available_qty": half, "considerable": ""},
+                    {"batch_no": f"TV-{part}-B2", "batch_qty": half * 2, "available_qty": half, "considerable": ""},
+                    {"batch_no": f"TV-{part}-B3", "batch_qty": qty * 2, "available_qty": qty, "considerable": ""}]
+        return [{"batch_no": f"TV-{part}-B1", "batch_qty": qty * 3, "available_qty": qty * 2, "considerable": ""}]
+
+    async def _allocate(self, part, qty, batches):
+        if not self.allocation_cb:
+            raise BatchAllocationError(f"Part {part} requires batch allocation but no allocation handler is attached")
+        return await self.allocation_cb(part, qty, batches)
+
+    async def read_batches(self, part):
+        """Returns batch rows for the part's Batch Details section, or None when the portal shows none."""
+        s = self.selectors["asn"]
+        container = self.page.locator(s["batch_container"].replace("{part}", part)).first
+        try:
+            await container.wait_for(state="visible", timeout=5000)
+        except Exception:
+            return None
+        rows = container.locator(s["batch_rows"])
+        batches = []
+        for i in range(await rows.count()):
+            cells = rows.nth(i).locator("td")
+            if await cells.count() < 3:
+                continue
+            texts = [(await cells.nth(j).inner_text()).strip() for j in range(3)]
+            if not texts[0] or "batch no" in texts[0].lower():
+                continue
+
+            def num(t):
+                try:
+                    return float(re.sub(r"[^\d.]", "", t) or 0)
+                except ValueError:
+                    return 0.0
+            batches.append({"batch_no": texts[0], "batch_qty": num(texts[1]),
+                            "available_qty": num(texts[2]), "considerable": ""})
+        return batches or None
+
+    async def apply_allocations(self, part, allocations):
+        """Fills 'Quantity To be Confirmed' and sets Batch Considerable Yes/No per batch row."""
+        s = self.selectors["asn"]
+        container = self.page.locator(s["batch_container"].replace("{part}", part)).first
+        for a in allocations:
+            row = container.locator(f"tr:has-text('{a['batch_no']}')").first
+            alloc = float(a.get("allocate_qty") or 0)
+            consider = bool(a.get("consider")) and alloc > 0
+            if alloc > 0:
+                qty_input = row.locator(s["batch_qty_input"]).first
+                await qty_input.fill(str(int(alloc) if alloc.is_integer() else alloc))
+            radios = row.locator(s["batch_radio"])
+            try:
+                await radios.nth(0 if consider else 1).check()
+            except Exception:
+                await self.log("Batch Allocated", f"Part {part}: could not set Batch Considerable radio for {a['batch_no']} - verify on portal", level="WARN")
+            await self.log("Batch Allocated", f"Part {part}: batch {a['batch_no']} -> Qty To be Confirmed {alloc}, Batch Considerable {'Yes' if consider else 'No'}")
 
     async def navigate_to_entry(self):
         if self.is_test:
@@ -410,7 +478,16 @@ class ASNAutomation(PortalAutomationBase):
                 raise AutomationError("Portal server error (simulated)")
             await self.log("PO Selected", f"[TEST] PO {data['po_number']} selected and searched")
             for item in data["items"]:
-                await self.log("Parts Added", f"[TEST] Part {item['part_number']}: added to invoice, ASN Qty {item['quantity']}")
+                part, qty = item["part_number"], item["quantity"]
+                if "BATCH" in str(part).upper():
+                    batches = self._simulate_batches(part, qty)
+                    await self.log("Batch Details", f"[TEST] Part {part}: {len(batches)} batch(es) found - awaiting allocation")
+                    allocations = await self._allocate(part, float(qty or 0), batches)
+                    for a in allocations:
+                        consider = bool(a.get("consider")) and float(a.get("allocate_qty") or 0) > 0
+                        await self.log("Batch Allocated", f"[TEST] Part {part}: batch {a['batch_no']} -> Qty To be Confirmed {a['allocate_qty']}, Batch Considerable {'Yes' if consider else 'No'}")
+                else:
+                    await self.log("Parts Added", f"[TEST] Part {part}: added to invoice, ASN Qty {qty}")
             await self.log("Invoice Filled", f"[TEST] Invoice {data['invoice_no']} dt {data['invoice_date']} basic {data['basic_amount']} total {data['total_amount']}")
             await self.log("Transporter Selected", f"[TEST] {data['transporter']}")
             await self.log("PDF Attached", f"[TEST] PDI attached: {os.path.basename(data['pdi_path'])}")
@@ -439,7 +516,12 @@ class ASNAutomation(PortalAutomationBase):
                 raise AutomationError(f"Part {part} not found in PO parts list")
             await link.click()
             await self.log("Parts Added", f"Part {part}: 'Click here to Add to Invoice' clicked")
-            if qty:
+            batches = await self.read_batches(part)
+            if batches:
+                await self.log("Batch Details", f"Part {part}: {len(batches)} batch(es) found - awaiting allocation")
+                allocations = await self._allocate(part, float(qty or 0), batches)
+                await self.apply_allocations(part, allocations)
+            elif qty:
                 try:
                     qty_input = self.page.locator(s["invoice_row_qty"].replace("{part}", part)).last
                     await qty_input.wait_for(state="visible", timeout=10000)

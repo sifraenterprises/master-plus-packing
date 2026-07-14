@@ -3,6 +3,7 @@ import io
 import re
 import uuid
 import time
+import asyncio
 import logging
 from typing import Optional
 from datetime import datetime, timezone
@@ -14,7 +15,7 @@ from pathlib import Path
 from database import db
 from models import utcnow
 from auth import get_current_user, log_activity
-from automation import ASNAutomation, AutomationError, AsnValidationError, DropdownMatchError, SCREENSHOT_DIR
+from automation import ASNAutomation, AutomationError, AsnValidationError, DropdownMatchError, BatchAllocationError, SCREENSHOT_DIR
 
 router = APIRouter(prefix="/asn", tags=["asn"])
 logger = logging.getLogger(__name__)
@@ -23,8 +24,11 @@ ROOT_DIR = Path(__file__).parent.parent
 PDI_DIR = ROOT_DIR / "uploads" / "pdi"
 PDI_DIR.mkdir(parents=True, exist_ok=True)
 MAX_RETRIES = 3
+ALLOCATION_TIMEOUT = 900
 
-run_state = {"running": False, "run_id": None, "total": 0, "processed": 0, "current": None, "started_at": None}
+run_state = {"running": False, "run_id": None, "total": 0, "processed": 0, "current": None,
+             "started_at": None, "awaiting_allocation": None}
+alloc_state = {"event": None, "record_id": None, "batches": [], "asn_qty": 0, "result": None, "cancelled": False}
 
 
 class RunRequest(BaseModel):
@@ -83,7 +87,50 @@ async def process_queue(ids: list[str], run_id: str, user: str):
         if current_oid["v"] is not None:
             await append_log(current_oid["v"], run_id, event, message, level)
 
+    record_allocs = {"v": []}
+
+    async def request_allocation(part, asn_qty, batches):
+        """Pauses the automation until the user confirms/cancels a batch allocation in the UI."""
+        oid = current_oid["v"]
+        rid = str(oid)
+        prior = [a for a in record_allocs["v"] if a["part_number"] == part]
+        if prior and abs(sum(float(a["allocated_quantity"]) for a in prior) - float(asn_qty)) < 0.001:
+            avail = {b["batch_no"]: float(b["available_qty"]) for b in batches}
+            if all(a["batch_number"] in avail and float(a["allocated_quantity"]) <= avail[a["batch_number"]] for a in prior):
+                await append_log(oid, run_id, "Batch Allocation", f"Reusing previously confirmed allocation for part {part}")
+                return [{"batch_no": a["batch_number"], "allocate_qty": float(a["allocated_quantity"]),
+                         "consider": a["batch_considerable"] == "Yes"} for a in prior]
+        ev = asyncio.Event()
+        alloc_state.update({"event": ev, "record_id": rid, "batches": batches,
+                            "asn_qty": float(asn_qty), "result": None, "cancelled": False})
+        run_state["awaiting_allocation"] = {"record_id": rid, "invoice_no": run_state["current"],
+                                            "part_number": part, "asn_qty": float(asn_qty), "batches": batches}
+        await db.asn_creation.update_one({"_id": oid}, {"$set": {"status": "Awaiting Allocation", "updated_at": now_iso()}})
+        await append_log(oid, run_id, "Batch Allocation", f"Waiting for user allocation - part {part}, ASN Qty {asn_qty}, {len(batches)} batch(es)")
+        try:
+            await asyncio.wait_for(ev.wait(), timeout=ALLOCATION_TIMEOUT)
+        except asyncio.TimeoutError:
+            raise BatchAllocationError("Batch allocation timed out (no user response within 15 minutes)")
+        finally:
+            run_state["awaiting_allocation"] = None
+            alloc_state["event"] = None
+        if alloc_state["cancelled"] or not alloc_state["result"]:
+            raise BatchAllocationError("Batch allocation cancelled by user")
+        await db.asn_creation.update_one({"_id": oid}, {"$set": {"status": "Processing", "updated_at": now_iso()}})
+        result = alloc_state["result"]
+        record_allocs["v"] = [a for a in record_allocs["v"] if a["part_number"] != part]
+        by_no = {b["batch_no"]: b for b in batches}
+        for a in result:
+            b = by_no.get(a["batch_no"], {})
+            record_allocs["v"].append({
+                "part_number": part, "batch_number": a["batch_no"],
+                "batch_quantity": float(b.get("batch_qty") or 0), "available_quantity": float(b.get("available_qty") or 0),
+                "allocated_quantity": float(a["allocate_qty"]), "batch_considerable": "Yes" if a["consider"] else "No",
+            })
+        return result
+
     bot = ASNAutomation(mode=mode, headless=headless, log=log)
+    bot.allocation_cb = request_allocation
     try:
         if mode == "live":
             bot.require_env()
@@ -97,6 +144,7 @@ async def process_queue(ids: list[str], run_id: str, user: str):
                 run_state["processed"] += 1
                 continue
             run_state["current"] = doc.get("invoice_no")
+            record_allocs["v"] = list(doc.get("batch_allocations") or [])
             await db.asn_creation.update_one({"_id": oid}, {"$set": {"status": "Processing", "error_message": "", "updated_at": now_iso()}})
             data = {
                 "po_number": doc.get("po_number", ""), "invoice_no": doc.get("invoice_no", ""),
@@ -122,7 +170,7 @@ async def process_queue(ids: list[str], run_id: str, user: str):
                         if shot:
                             screenshots["after_success"] = shot
                         break
-                    except (AsnValidationError, DropdownMatchError) as e:
+                    except (AsnValidationError, DropdownMatchError, BatchAllocationError) as e:
                         error_message = str(e)
                         await log("Error", error_message, level="ERROR")
                         break
@@ -153,9 +201,20 @@ async def process_queue(ids: list[str], run_id: str, user: str):
                         pass
                 await db.asn_creation.update_one({"_id": oid}, {"$set": {"failure_url": page_url, "failure_html": html_file}})
             update = {"status": status, "error_message": error_message, "screenshots": screenshots, "updated_at": now_iso()}
+            if record_allocs["v"]:
+                update["batch_allocations"] = record_allocs["v"]
             if status == "Completed":
                 update["asn_number"] = asn_number
                 update["completed_at"] = now_iso()
+                if record_allocs["v"]:
+                    await db.asn_batch_allocations.delete_many({"asn_record_id": rec_id})
+                    await db.asn_batch_allocations.insert_many([{
+                        "asn_record_id": rec_id, "asn_number": asn_number,
+                        "dispatch_id": doc.get("master_dispatch_id", ""), "dispatch_no": doc.get("dispatch_no", ""),
+                        "invoice_no": doc.get("invoice_no", ""), **a,
+                        "created_by": user, "created_at": now_iso(),
+                    } for a in record_allocs["v"]])
+                    await log("Batch Allocation", f"{len(record_allocs['v'])} batch allocation(s) saved against {asn_number}", level="SUCCESS")
                 if ObjectId.is_valid(doc.get("master_dispatch_id", "")):
                     await db.master_dispatch.update_one(
                         {"_id": ObjectId(doc["master_dispatch_id"])},
@@ -174,6 +233,8 @@ async def process_queue(ids: list[str], run_id: str, user: str):
         await bot.close()
         run_state["running"] = False
         run_state["current"] = None
+        run_state["awaiting_allocation"] = None
+        alloc_state["event"] = None
 
 
 # ---------- Import ----------
@@ -330,6 +391,64 @@ async def asn_run_status(user: dict = Depends(get_current_user)):
     return run_state
 
 
+# ---------- Batch allocation ----------
+
+class AllocationRow(BaseModel):
+    batch_no: str
+    allocate_qty: float = Field(0, ge=0)
+    consider: bool = True
+
+
+class AllocationConfirm(BaseModel):
+    record_id: str
+    allocations: list[AllocationRow]
+
+
+@router.post("/allocation/confirm")
+async def confirm_allocation(body: AllocationConfirm, user: dict = Depends(get_current_user)):
+    if not alloc_state.get("event") or alloc_state.get("record_id") != body.record_id:
+        raise HTTPException(status_code=409, detail="No batch allocation is currently awaiting for this record")
+    by_no = {b["batch_no"]: b for b in alloc_state["batches"]}
+    total = 0.0
+    for a in body.allocations:
+        b = by_no.get(a.batch_no)
+        if not b:
+            raise HTTPException(status_code=400, detail=f"Unknown batch {a.batch_no}")
+        if a.allocate_qty > float(b["available_qty"]) + 0.001:
+            raise HTTPException(status_code=400, detail="Allocation cannot exceed Available Quantity.")
+        total += a.allocate_qty
+    if abs(total - float(alloc_state["asn_qty"])) > 0.001:
+        raise HTTPException(status_code=400,
+                            detail=f"Total Allocated ({total:g}) must equal ASN Quantity ({alloc_state['asn_qty']:g})")
+    alloc_state["result"] = [a.model_dump() for a in body.allocations]
+    alloc_state["cancelled"] = False
+    alloc_state["event"].set()
+    await log_activity(user["username"], "asn_batch_allocated", f"{len(body.allocations)} batch(es) confirmed", "asn")
+    return {"ok": True}
+
+
+@router.post("/allocation/cancel")
+async def cancel_allocation(body: dict, user: dict = Depends(get_current_user)):
+    if not alloc_state.get("event") or alloc_state.get("record_id") != body.get("record_id"):
+        raise HTTPException(status_code=409, detail="No batch allocation is currently awaiting for this record")
+    alloc_state["cancelled"] = True
+    alloc_state["result"] = None
+    alloc_state["event"].set()
+    await log_activity(user["username"], "asn_batch_allocation_cancelled", "", "asn")
+    return {"ok": True}
+
+
+@router.get("/batch-allocations")
+async def batch_allocations(search: Optional[str] = None, user: dict = Depends(get_current_user)):
+    query = {}
+    if search:
+        rx = {"$regex": re.escape(search), "$options": "i"}
+        query["$or"] = [{"asn_number": rx}, {"invoice_no": rx}, {"part_number": rx},
+                        {"batch_number": rx}, {"dispatch_no": rx}]
+    docs = await db.asn_batch_allocations.find(query).sort("created_at", -1).to_list(500)
+    return {"items": [serialize(d) for d in docs], "total": len(docs)}
+
+
 @router.get("/export")
 async def asn_export(user: dict = Depends(get_current_user)):
     from openpyxl import Workbook
@@ -339,15 +458,17 @@ async def asn_export(user: dict = Depends(get_current_user)):
     ws = wb.active
     ws.title = "ASN Creation"
     ws.append(["Dispatch No", "Invoice No", "Invoice Date", "PO Number", "Transporter", "Plant",
-               "Basic Amount", "Total Amount", "Parts", "PDI File", "Status", "ASN Number", "Error"])
+               "Basic Amount", "Total Amount", "Parts", "PDI File", "Status", "ASN Number", "Batch Allocations", "Error"])
     for cell in ws[1]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill(start_color="F97316", end_color="F97316", fill_type="solid")
     for d in docs:
+        allocs = "; ".join(f"{a['part_number']}: {a['batch_number']}={a['allocated_quantity']:g} ({a['batch_considerable']})"
+                           for a in (d.get("batch_allocations") or []))
         ws.append([d.get("dispatch_no"), d.get("invoice_no"), d.get("invoice_date"), d.get("po_number"),
                    d.get("transporter"), d.get("plant"), d.get("basic_amount"), d.get("total_amount"),
                    ", ".join(i["part_number"] for i in d.get("items", [])), d.get("pdi_file_name", ""),
-                   d.get("status"), d.get("asn_number"), d.get("error_message")])
+                   d.get("status"), d.get("asn_number"), allocs, d.get("error_message")])
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
