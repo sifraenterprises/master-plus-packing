@@ -1,0 +1,47 @@
+{
+  "summary": "Verified frontend dependency fix (React 19->18, Router 7->6, deps consolidation) via reference build inspection + UI runtime regression on preview URL. Build clean, all portal routes render, no console errors.",
+  "build_verification": {
+    "package_lock_present": "/app/frontend/package-lock.json (787KB)",
+    "npm_install": "Exit 0, NO ERESOLVE, NO peer dep conflicts (1527 packages, only deprecation warns)",
+    "npm_build": "Exit 0, 'Compiled successfully', main.js 390.07 kB gzip",
+    "installed_versions": {"react": "18.3.1", "react-router-dom": "6.30.4", "eslint": "8.57.1"},
+    "reference_dir": "/tmp/npmbuild",
+    "logs": ["/tmp/npm_install.log", "/tmp/npm_build.log"]
+  },
+  "runtime_regression": {
+    "landing_page": "OK - hero+gallery renders (3 images), title correct",
+    "login_admin": "OK - POST /api/auth/login, redirects to /portal, sonner toast fires (1 [data-sonner-toast] node)",
+    "sidebar_navigation": {
+      "Dispatch List (/portal/master-dispatch/list)": "OK, active state set",
+      "Daily Dispatch Report (/portal/master-dispatch/daily-report)": "OK, active state set",
+      "ASN Creation (/portal/modules/asn)": "OK, active state set",
+      "E-Way Bill Entry (/portal/modules/eway-bill)": "OK (12643 chars rendered)",
+      "Vendor E-Way Bill Ack. (/portal/modules/vendor-ack)": "OK",
+      "Reports (/portal/reports)": "OK",
+      "Settings (/portal/settings)": "OK - admin User Management, Company Profile, Audit Logs tabs render"
+    },
+    "reports_page": "23 card elements, 16 recharts wrappers (recharts renders on React 18), KPI card click works",
+    "daily_report_auto_query": "/portal/master-dispatch/daily-report?date=2026-06-14 auto-generates - page renders with date visible (useSearchParams Router 6 API working)",
+    "date_input": "1 input[type=date] present on Daily Report",
+    "toast_sonner": "confirmed on login",
+    "console_errors": 0,
+    "page_errors": 0,
+    "no_invalid_hook_call": true,
+    "no_router_errors": true
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/tmp/npm_install.log", "/tmp/npm_build.log", "/tmp/npmbuild/package-lock.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "eslint 8.57.1 is EOL per npm warning - non-blocking, but future maintenance concern",
+    "25 npm audit vulnerabilities (9 low/8 mod/8 high) inherited from CRA - typical for react-scripts 5, not a regression"
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped per request)", "frontend": "100%"},
+  "test_credentials": "admin / 5@Sohangso (used)",
+  "seed_data_creation": "none",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Dep downgrade to React 18 + Router 6 verified clean. Sidebar routes: master-dispatch/{list,daily-report,create,bulk-upload,search}, modules/{asn,eway-bill,vendor-ack}, dispatch-entry, packing, reports, settings. Note /portal/automation/* is NOT a route - modules live under /portal/modules/*."
+}
