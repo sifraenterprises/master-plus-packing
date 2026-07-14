@@ -138,6 +138,14 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 - Cleanup: auth_testing.md removed, stray test MD record removed, App.css comment fixed
 - Validation matrix all green: fresh pip install EXIT 0, npm build "Compiled successfully", nginx -t OK, backend boot + health + headers verified, frontend footer verified in browser
 
+## Implemented — Iteration 19 (June 2026): Final production validation + monitoring/backup/masters
+- Backups: deploy/backup.sh (mongodump gzip, 7-day retention) + deploy/restore.sh (interactive, --drop) — full backup→restore cycle verified (764 docs); install.sh installs nightly 02:00 cron (/etc/cron.d/grewal-backup) + /var/backups/grewal
+- Monitoring: GET /api/system/status (admin-only, 403 dispatch) — API/DB (ping+counts)/Playwright chromium/Gemini key/disk/CPU/memory/last backup/automation queues/recent failures/version/uptime; Settings → "System Status" tab (8 status cards + meters + refresh)
+- Masters: Settings → "Masters" tab — Plants & Transporters CRUD (DELETE endpoints added w/ require_admin; feeds all module dropdowns)
+- Audit results: empty-DB startup verified (users seeded, 19 collections, login OK), no hardcoded paths, secrets not committed (.env untracked), security headers on responses, JWT RBAC verified, nginx -t OK, fresh pip install + npm build clean
+- Testing iteration_12: backend 39/39 pytest, frontend 100% (0 console errors / 0 failed API calls across 17 route visits, all 5 Settings tabs, footer v1.0.0)
+- Known limitations: fresh Ubuntu VM cannot be provisioned inside this container (install.sh components validated individually); DQMS pending; live TAFE runs need VPS IP whitelisting; frontend route-level lazy-loading not enabled (CRA default single bundle, minified+gzipped)
+
 ## Backlog
 - P0: none outstanding
 - P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration); "Masters" section in Settings (admin UI to add/remove Plants & Transporters); DQMS Automation module; split automation.py into automation/ package (eway.py, asn.py, vendor_ack.py); VPS go-live checklist (playwright install chromium --with-deps, Validate Portal, TAFE IP whitelist)
