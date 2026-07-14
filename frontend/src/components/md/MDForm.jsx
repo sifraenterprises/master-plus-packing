@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash } from "@phosphor-icons/react";
+import api from "@/lib/api";
 
 export const STATUS_OPTIONS = [
   { value: "pending", label: "Pending" },
@@ -19,7 +21,7 @@ export const MD_EMPTY = {
   boxes: 0, gross_weight: "", net_weight: "",
   vehicle_number: "", lr_number: "", transporter_name: "",
   cgst: 0, sgst: 0, igst: 0, gst_total: 0, invoice_total: 0,
-  eway_bill_number: "", irn: "", ack_number: "", remarks: "",
+  eway_bill_number: "", irn: "", ack_number: "", asn_number: "", plant: "", remarks: "",
   status: "pending", verified: false,
 };
 
@@ -98,6 +100,11 @@ const ITEM_COLS = [
 
 export default function MDForm({ entry, onChange, idPrefix }) {
   const itemsConf = entry.confidence?.items;
+  const [plants, setPlants] = useState([]);
+  useEffect(() => {
+    api.get("/master-dispatch/plants").then((r) => setPlants(r.data)).catch(() => {});
+  }, []);
+  const plantOptions = entry.plant && !plants.includes(entry.plant) ? [entry.plant, ...plants] : plants;
   const setItem = (i, k, v) =>
     onChange({ ...entry, items: entry.items.map((it, j) => (j === i ? { ...it, [k]: v } : it)) });
 
@@ -182,6 +189,21 @@ export default function MDForm({ entry, onChange, idPrefix }) {
         <Field label="E-Way Bill Number" k="eway_bill_number" {...{ entry, onChange, idPrefix }} />
         <Field label="IRN" k="irn" {...{ entry, onChange, idPrefix }} />
         <Field label="ACK Number" k="ack_number" {...{ entry, onChange, idPrefix }} />
+        <Field label="ASN Number" k="asn_number" {...{ entry, onChange, idPrefix }} />
+        <div>
+          <label className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground block mb-1">Plant</label>
+          <select
+            value={entry.plant || ""}
+            onChange={(e) => onChange({ ...entry, plant: e.target.value })}
+            data-testid={`${idPrefix}-plant`}
+            className="h-9 w-full rounded-sm bg-input border border-border text-sm px-3 focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="">— Select Plant —</option>
+            {plantOptions.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        </div>
         <Field label="Remarks" k="remarks" {...{ entry, onChange, idPrefix }} />
         <div>
           <label className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground block mb-1">Status</label>

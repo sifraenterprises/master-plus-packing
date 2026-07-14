@@ -15,28 +15,33 @@ const MD_SUBMENU = [
   { to: "/portal/master-dispatch/search", label: "Search Dispatch" },
 ];
 
+const AUTOMATION_SUBMENU = [
+  { to: "/portal/modules/asn", label: "ASN Creation" },
+  { to: "/portal/modules/eway-bill", label: "E-Way Bill Entry" },
+  { to: "/portal/modules/vendor-ack", label: "Vendor E-Way Bill Ack." },
+];
+
 const NAV = [
   { to: "/portal", label: "Dashboard", icon: SquaresFour, end: true },
   { group: "Master Dispatch", icon: Stack, children: MD_SUBMENU },
   { to: "/portal/dispatch", label: "Dispatch Entry", icon: ClipboardText },
   { to: "/portal/modules/packing", label: "Packing", icon: Package },
-  { to: "/portal/modules/asn", label: "ASN", icon: Truck },
-  { to: "/portal/modules/eway-bill", label: "E-Way Bill", icon: Receipt },
-  { to: "/portal/modules/vendor-ack", label: "Vendor Ack.", icon: Handshake },
+  { group: "Automation", icon: Truck, children: AUTOMATION_SUBMENU },
   { to: "/portal/modules/dqms", label: "DQMS", icon: SealCheck },
   { to: "/portal/reports", label: "Reports", icon: ChartBar },
 ];
 
 function NavGroup({ item, onNavigate }) {
   const location = useLocation();
-  const routeActive = location.pathname.startsWith("/portal/master-dispatch");
+  const routeActive = item.children.some((c) => location.pathname.startsWith(c.to));
   const [expanded, setExpanded] = useState(true);
   const Icon = item.icon;
+  const slug = item.group.toLowerCase().replace(/[^a-z]+/g, "-");
   return (
     <div>
       <button
         onClick={() => setExpanded(!expanded)}
-        data-testid="nav-master-dispatch-group"
+        data-testid={`nav-${slug}-group`}
         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm font-medium transition-colors ${
           routeActive ? "text-primary" : "text-muted-foreground hover:text-foreground hover:bg-secondary"
         }`}

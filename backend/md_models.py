@@ -39,9 +39,12 @@ class MasterDispatch(BaseDocument):
     eway_bill_number: str = ""
     irn: str = ""
     ack_number: str = ""
+    asn_number: str = ""
+    plant: str = ""
     remarks: str = ""
     status: str = "pending"
     verified: bool = False
+    vendor_ack_status: str = ""
     ocr_status: str = "manual"  # manual | extracted | error
     confidence: dict = {}
     low_confidence_fields: list[str] = []
@@ -78,6 +81,8 @@ class MasterDispatchInput(BaseModel):
     eway_bill_number: str = ""
     irn: str = ""
     ack_number: str = ""
+    asn_number: str = ""
+    plant: str = ""
     remarks: str = ""
     status: str = Field(default="pending", pattern="^(pending|ready_for_asn|ready_for_eway|completed)$")
     verified: bool = False

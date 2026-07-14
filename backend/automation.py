@@ -15,6 +15,18 @@ class AutomationError(Exception):
     pass
 
 
+class DropdownMatchError(AutomationError):
+    pass
+
+
+class AsnNotFoundError(AutomationError):
+    pass
+
+
+class AlreadyAcknowledgedError(AutomationError):
+    pass
+
+
 def load_selectors():
     return json.loads(SELECTORS_FILE.read_text())
 
@@ -90,12 +102,32 @@ class PortalAutomationBase:
         if actual.strip() != value.strip():
             raise AutomationError(f"Field verification failed for {selector}: expected '{value}', got '{actual}'")
 
+    async def select_by_label(self, selector, label):
+        """Select a dropdown option by exact visible text and verify it. Never by index."""
+        loc = self.page.locator(selector).first
+        await loc.wait_for(state="visible")
+        try:
+            await self.page.wait_for_function(
+                "sel => { const el = document.querySelector(sel); return el && el.options && el.options.length > 0 && !el.disabled; }",
+                arg=selector, timeout=30000)
+        except Exception:
+            pass
+        try:
+            await loc.select_option(label=label, timeout=10000)
+        except Exception:
+            raise DropdownMatchError(f"'{label}' not found in dropdown")
+        selected = (await loc.evaluate("el => el.options[el.selectedIndex] ? el.options[el.selectedIndex].text : ''")).strip()
+        if selected != label.strip():
+            raise DropdownMatchError(f"Dropdown verification failed: expected '{label}', portal selected '{selected}'")
+
     async def capture_screenshot(self, name):
         SCREENSHOT_DIR.mkdir(exist_ok=True)
         ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         path = SCREENSHOT_DIR / f"{name}_{ts}.png"
         if self.is_test:
-            path.write_bytes(b"TEST_SCREENSHOT")
+            import base64
+            path.write_bytes(base64.b64decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="))
         else:
             try:
                 await self.page.screenshot(path=str(path))
@@ -242,9 +274,99 @@ class ASNAutomation(SimpleFormAutomation):
     section = "asn"
 
 
-class VendorAckAutomation(SimpleFormAutomation):
+class VendorAckAutomation(PortalAutomationBase):
+    """Vendor -> E Way Bill Acknowledgement automation. Uses actionability auto-waits
+    (click/fill wait for visible+enabled) and explicit waits for dropdowns/grids - no fixed delays in live mode."""
     module = "vendor_ack"
-    section = "vendor_ack"
+
+    async def navigate_to_entry(self):
+        if self.is_test:
+            await asyncio.sleep(0.2)
+            await self.log("Navigation", "[TEST] Navigated to Vendor -> E Way Bill Acknowledgement")
+            return
+        s = self.selectors["vendor_ack"]
+        await self.page.click(s["menu_vendor_ack"])
+        await self.page.wait_for_selector(s["company_code"], state="visible")
+        await self.log("Navigation", "Opened Vendor E Way Bill Acknowledgement page")
+
+    async def acknowledge(self, data):
+        """Full flow: select dropdowns, enter ASN, search, tick grid row, submit.
+        Returns {'before_submit': path|None, 'message': str}. Raises typed errors."""
+        if self.is_test:
+            await asyncio.sleep(0.3)
+            asn = (data.get("asn_number") or "").upper()
+            combo = f"{data.get('transporter', '')} {data.get('plant', '')}".upper()
+            if "BADDROP" in combo:
+                raise DropdownMatchError(f"'{data.get('transporter')}' not found in dropdown")
+            if "NOTFOUND" in asn:
+                raise AsnNotFoundError(f"ASN Details Not Found for {data.get('asn_number')}")
+            if "ACKED" in asn:
+                raise AlreadyAcknowledgedError("E-Way Bill already acknowledged for this ASN")
+            if "ERR" in asn:
+                raise AutomationError("Portal server error (simulated)")
+            await self.log("Dropdown Selected", f"[TEST] Company Code = {data['company_code']}")
+            await self.log("Dropdown Selected", f"[TEST] Transporter = {data['transporter']}")
+            await self.log("Dropdown Selected", f"[TEST] Plant = {data['plant']}")
+            await self.log("Field Entered", f"[TEST] ASN No = {data['asn_number']}")
+            await self.log("Button Clicked", "[TEST] Search clicked - ASN Details grid loaded")
+            await self.log("Checkbox Ticked", "[TEST] ASN Details row selected")
+            before = await self.capture_screenshot(f"vack_before_{data['asn_number']}")
+            await self.log("Button Clicked", "[TEST] Submit clicked")
+            return {"before_submit": before, "message": "E-Way Bill Acknowledged successfully"}
+
+        s = self.selectors["vendor_ack"]
+        await self.select_by_label(s["company_code"], data["company_code"])
+        await self.log("Dropdown Selected", f"Company Code = {data['company_code']}")
+        await self.select_by_label(s["transporter"], data["transporter"])
+        await self.log("Dropdown Selected", f"Transporter = {data['transporter']}")
+        await self.select_by_label(s["plant"], data["plant"])
+        await self.log("Dropdown Selected", f"Plant = {data['plant']}")
+
+        asn_loc = self.page.locator(s["asn_no"]).first
+        await asn_loc.wait_for(state="visible")
+        await self.page.wait_for_function(
+            "sel => { const el = document.querySelector(sel); return el && !el.disabled; }",
+            arg=s["asn_no"], timeout=30000)
+        await asn_loc.fill(data["asn_number"])
+        actual = (await asn_loc.input_value()).strip()
+        if actual != data["asn_number"].strip():
+            raise AutomationError(f"ASN field verification failed: expected '{data['asn_number']}', got '{actual}'")
+        await self.log("Field Entered", f"ASN No = {data['asn_number']}")
+
+        await self.page.locator(s["search"]).first.click()
+        await self.log("Button Clicked", "Search clicked - waiting for ASN Details")
+        grid = self.page.locator(s["grid"]).first
+        try:
+            await grid.wait_for(state="visible", timeout=30000)
+        except Exception:
+            if await self.page.locator(s["already_ack_indicator"]).count() > 0:
+                raise AlreadyAcknowledgedError("Portal reports: Already Acknowledged")
+            if await self.page.locator(s["no_details_indicator"]).count() > 0:
+                raise AsnNotFoundError("ASN Details Not Found")
+            raise AutomationError("ASN Details grid did not appear (portal timeout)")
+        await self.log("Grid Loaded", "ASN Details grid visible")
+
+        checkbox = self.page.locator(s["grid_checkbox"]).first
+        await checkbox.check()
+        await self.log("Checkbox Ticked", "ASN Details row selected")
+
+        before = await self.capture_screenshot(f"vack_before_{data['asn_number']}")
+        await self.page.locator(s["submit"]).first.click()
+        await self.log("Button Clicked", "Submit clicked - waiting for confirmation")
+        try:
+            await self.page.wait_for_selector(s["success_indicator"], state="visible", timeout=30000)
+            msg = (await self.page.locator(s["success_indicator"]).first.inner_text()).strip()
+        except Exception:
+            err = self.page.locator(s["error_indicator"])
+            if await err.count() > 0:
+                msg = (await err.first.inner_text()).strip()
+                if "already" in msg.lower():
+                    raise AlreadyAcknowledgedError(msg)
+                raise AutomationError(msg or "Portal returned an error after Submit")
+            raise AutomationError("No confirmation received from portal after Submit")
+        if "already" in msg.lower():
+            raise AlreadyAcknowledgedError(msg)
+        return {"before_submit": before, "message": msg or "E-Way Bill Acknowledged successfully"}
 
 
 class DQMSAutomation(SimpleFormAutomation):

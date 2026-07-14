@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from fastapi.responses import StreamingResponse, FileResponse
 from bson import ObjectId
+from pydantic import BaseModel
 from pymongo import ReturnDocument
 from pypdf import PdfReader
 from database import db
@@ -149,6 +150,34 @@ async def retry_batch(batch_id: str, user: dict = Depends(get_current_user)):
     launch_batch(batch_id)
     await log_activity(user["username"], "md_retry", f"Batch {batch_id}: retrying {len(failed)} file(s)", "master_dispatch")
     return {"batch_id": batch_id, "retrying": len(failed)}
+
+
+# ---------- Plants master (configurable list) ----------
+
+DEFAULT_PLANTS = ["TMTL - Production - Bhopal-700", "TAFE MOTORS AND TRACTORS LTD.-7075"]
+
+
+class PlantInput(BaseModel):
+    name: str
+
+
+@router.get("/plants")
+async def list_plants(user: dict = Depends(get_current_user)):
+    if await db.plants.count_documents({}) == 0:
+        for p in DEFAULT_PLANTS:
+            await db.plants.update_one({"name": p}, {"$setOnInsert": {"name": p, "created_at": utcnow().isoformat()}}, upsert=True)
+    docs = await db.plants.find({}, {"_id": 0, "name": 1}).sort("name", 1).to_list(200)
+    return [d["name"] for d in docs]
+
+
+@router.post("/plants")
+async def add_plant(body: PlantInput, user: dict = Depends(require_admin)):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Plant name is required")
+    await db.plants.update_one({"name": name}, {"$setOnInsert": {"name": name, "created_at": utcnow().isoformat()}}, upsert=True)
+    await log_activity(user["username"], "plant_added", name, "master_dispatch")
+    return {"ok": True, "name": name}
 
 
 # ---------- Dashboard stats ----------

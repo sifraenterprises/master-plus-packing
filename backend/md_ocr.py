@@ -23,7 +23,8 @@ CONF_THRESHOLD = 90
 
 HEADER_TEXT = ["customer_name", "customer_code", "gstin", "invoice_number", "invoice_date",
                "po_number", "po_date", "gross_weight", "net_weight", "vehicle_number",
-               "lr_number", "transporter_name", "eway_bill_number", "irn", "ack_number"]
+               "lr_number", "transporter_name", "eway_bill_number", "irn", "ack_number",
+               "asn_number", "plant"]
 HEADER_NUM = ["cgst", "sgst", "igst", "gst_total", "invoice_total"]
 
 EXTRACTION_PROMPT = """You are an expert OCR engine for Indian GST tax invoices of an engineering company.
@@ -37,10 +38,12 @@ Return ONLY valid JSON (no markdown, no explanation) in exactly this structure:
 "boxes":0,"gross_weight":"","net_weight":"",
 "vehicle_number":"","lr_number":"","transporter_name":"",
 "cgst":0,"sgst":0,"igst":0,"gst_total":0,"invoice_total":0,
-"eway_bill_number":"","irn":"","ack_number":"",
-"confidence":{"customer_name":95,"customer_code":95,"gstin":95,"invoice_number":95,"invoice_date":95,"po_number":95,"po_date":95,"boxes":95,"gross_weight":95,"net_weight":95,"vehicle_number":95,"lr_number":95,"transporter_name":95,"cgst":95,"sgst":95,"igst":95,"gst_total":95,"invoice_total":95,"eway_bill_number":95,"irn":95,"ack_number":95,"items":95}}]}
+"eway_bill_number":"","irn":"","ack_number":"","asn_number":"","plant":"",
+"confidence":{"customer_name":95,"customer_code":95,"gstin":95,"invoice_number":95,"invoice_date":95,"po_number":95,"po_date":95,"boxes":95,"gross_weight":95,"net_weight":95,"vehicle_number":95,"lr_number":95,"transporter_name":95,"cgst":95,"sgst":95,"igst":95,"gst_total":95,"invoice_total":95,"eway_bill_number":95,"irn":95,"ack_number":95,"asn_number":95,"plant":95,"items":95}}]}
 Rules:
 - "gstin" is the CUSTOMER/buyer GSTIN (Bill To / Ship To party), not the seller's own GSTIN.
+- "asn_number" is the ASN (Advance Shipping Notice) number if printed on the document, else "".
+- "plant" is the receiving plant / consignee plant name-code if printed (e.g. "TMTL - Production - Bhopal-700"), else "".
 - Quantities, rates, amounts and taxes must be plain numbers. Dates in YYYY-MM-DD. Missing text -> "", missing numbers -> 0.
 - "confidence" is your certainty 0-100 per field (100 = clearly printed and read; below 90 = unclear, guessed or absent).
 - Include EVERY line item of each invoice in "items".

@@ -14,6 +14,7 @@ import SearchDispatch from "@/pages/master-dispatch/SearchDispatch";
 import ModulePlaceholder from "@/pages/ModulePlaceholder";
 import PackingModule from "@/pages/PackingModule";
 import EWayBillModule from "@/pages/EWayBillModule";
+import VendorAckModule from "@/pages/VendorAckModule";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
 
@@ -55,6 +56,7 @@ function App() {
             <Route path="reports" element={<Reports />} />
             <Route path="modules/packing" element={<PackingModule />} />
             <Route path="modules/eway-bill" element={<EWayBillModule />} />
+            <Route path="modules/vendor-ack" element={<VendorAckModule />} />
             <Route path="modules/:moduleKey" element={<ModulePlaceholder />} />
             <Route
               path="settings"

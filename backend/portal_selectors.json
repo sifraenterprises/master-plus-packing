@@ -42,15 +42,19 @@
     "error_indicator": ".error-message, #lblErrorMsg"
   },
   "vendor_ack": {
-    "menu_path": [
-      "text=Vendor Acknowledgement"
-    ],
-    "fields": {
-      "invoice_no": "#txtInvoiceNo"
-    },
-    "submit": "#btnSubmit",
-    "success_indicator": ".success-message, #lblSuccess",
-    "error_indicator": ".error-message, #lblErrorMsg"
+    "menu_vendor_ack": "text=E Way Bill Acknowledgement",
+    "company_code": "select[id*='CompanyCode' i], select[name*='CompanyCode' i]",
+    "transporter": "select[id*='Transporter' i], select[name*='Transporter' i]",
+    "plant": "select[id*='Plant' i], select[name*='Plant' i]",
+    "asn_no": "input[id*='ASN' i], input[name*='ASN' i]",
+    "search": "input[type='submit'][value='Search'], button:has-text('Search'), [id*='btnSearch' i]",
+    "grid": "[id*='grdASN' i], [id*='GridView' i] tr, table[id*='ASN' i]",
+    "grid_checkbox": "[id*='grdASN' i] input[type='checkbox'], [id*='GridView' i] input[type='checkbox']",
+    "submit": "input[type='submit'][value='Submit'], button:has-text('Submit'), [id*='btnSubmit' i]",
+    "success_indicator": ".success-message, [id*='lblSuccess' i], [id*='lblMsg' i]",
+    "error_indicator": ".error-message, [id*='lblError' i]",
+    "no_details_indicator": "[id*='lblNoRecord' i], text=No Records Found, text=No details found",
+    "already_ack_indicator": "text=Already Acknowledged"
   },
   "dqms": {
     "menu_path": [
