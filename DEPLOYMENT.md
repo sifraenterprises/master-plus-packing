@@ -93,13 +93,16 @@ sudo certbot --nginx -d yourdomain.com
 
 Then set `CORS_ORIGINS=https://yourdomain.com` in `backend/.env` and restart the API.
 
-## 6. Health, logs & troubleshooting
+## 6. Health, logs, backups & troubleshooting
 
 | What | Command |
 |---|---|
 | Health check | `curl http://127.0.0.1:8001/health` → `{"status":"ok","version":"1.0.0"}` |
+| System status | Portal → Settings → **System Status** (API/DB/Playwright/Gemini, disk, CPU, RAM, queues, last backup) |
 | API service | `sudo systemctl status grewal-api` · `journalctl -u grewal-api -f` |
-| App logs (rotating) | `/var/log/grewal/api.log`, `/var/log/grewal/error.log` |
+| App logs (rotating) | `/var/log/grewal/api.log`, `/var/log/grewal/error.log`, `/var/log/grewal/backup.log` |
+| Manual backup | `bash deploy/backup.sh` (nightly 02:00 cron installed automatically; 7-day retention in `/var/backups/grewal`) |
+| Restore backup | `bash deploy/restore.sh` (newest) or `bash deploy/restore.sh /var/backups/grewal/backup_....gz` |
 | nginx | `sudo nginx -t` · `/var/log/nginx/error.log` |
 | MongoDB | `sudo systemctl status mongod` |
 

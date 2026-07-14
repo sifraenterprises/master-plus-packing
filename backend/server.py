@@ -23,6 +23,7 @@ from routes.master_dispatch_routes import router as master_dispatch_router
 from routes.eway_routes import router as eway_router
 from routes.vendor_ack_routes import router as vendor_ack_router
 from routes.asn_routes import router as asn_router
+from routes.system_routes import router as system_router
 
 REQUIRED_ENV = ["MONGO_URL", "DB_NAME", "JWT_SECRET", "ADMIN_USERNAME", "ADMIN_PASSWORD",
                 "DISPATCH_USERNAME", "DISPATCH_PASSWORD"]
@@ -95,6 +96,7 @@ api_router.include_router(master_dispatch_router)
 api_router.include_router(eway_router)
 api_router.include_router(vendor_ack_router)
 api_router.include_router(asn_router)
+api_router.include_router(system_router)
 api_router.include_router(public_router)
 app.include_router(api_router)
 

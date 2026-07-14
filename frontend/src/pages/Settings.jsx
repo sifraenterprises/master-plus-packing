@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import api, { apiError } from "@/lib/api";
+import { MastersPanel } from "@/components/settings/MastersPanel";
+import { SystemStatusPanel } from "@/components/settings/SystemStatusPanel";
 
 const EMPTY_USER = { username: "", name: "", password: "", role: "dispatch" };
 
@@ -86,7 +88,17 @@ export default function Settings() {
           <TabsTrigger value="users" className="rounded-sm" data-testid="tab-users">User Management</TabsTrigger>
           <TabsTrigger value="profile" className="rounded-sm" data-testid="tab-company-profile">Company Profile</TabsTrigger>
           <TabsTrigger value="logs" className="rounded-sm" data-testid="tab-audit-logs">Audit Logs</TabsTrigger>
+          <TabsTrigger value="masters" className="rounded-sm" data-testid="tab-masters">Masters</TabsTrigger>
+          <TabsTrigger value="system" className="rounded-sm" data-testid="tab-system">System Status</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="masters" className="mt-6">
+          <MastersPanel />
+        </TabsContent>
+
+        <TabsContent value="system" className="mt-6">
+          <SystemStatusPanel />
+        </TabsContent>
 
         <TabsContent value="users" className="space-y-6 mt-6">
           <div className="border border-border bg-card rounded-sm p-6 space-y-4" data-testid="create-user-form">

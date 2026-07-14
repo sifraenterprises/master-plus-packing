@@ -188,6 +188,15 @@ async def add_plant(body: PlantInput, user: dict = Depends(require_admin)):
     return {"ok": True, "name": name}
 
 
+@router.delete("/plants/{name}")
+async def delete_plant(name: str, user: dict = Depends(require_admin)):
+    result = await db.plants.delete_one({"name": name})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Plant not found")
+    await log_activity(user["username"], "plant_deleted", name, "master_dispatch")
+    return {"ok": True}
+
+
 @router.get("/transporters")
 async def list_transporters(user: dict = Depends(get_current_user)):
     if await db.transporters.count_documents({}) == 0:
@@ -205,6 +214,15 @@ async def add_transporter(body: PlantInput, user: dict = Depends(require_admin))
     await db.transporters.update_one({"name": name}, {"$setOnInsert": {"name": name, "created_at": utcnow().isoformat()}}, upsert=True)
     await log_activity(user["username"], "transporter_added", name, "master_dispatch")
     return {"ok": True, "name": name}
+
+
+@router.delete("/transporters/{name}")
+async def delete_transporter(name: str, user: dict = Depends(require_admin)):
+    result = await db.transporters.delete_one({"name": name})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Transporter not found")
+    await log_activity(user["username"], "transporter_deleted", name, "master_dispatch")
+    return {"ok": True}
 
 
 # ---------- Dashboard stats ----------

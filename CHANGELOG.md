@@ -20,6 +20,7 @@ First production-ready release.
 ### Platform
 - JWT auth (admin + dispatch roles), brute-force lockout, seeded users from env.
 - Production hardening: `/health` endpoint, rotating logs (`/var/log/grewal`), security headers, env validation, configurable CORS.
-- Deployment kit under `deploy/` (install.sh, update.sh, systemd unit, nginx config) — see DEPLOYMENT.md.
+- Deployment kit under `deploy/` (install.sh, update.sh, backup.sh + nightly cron w/ 7-day retention, restore.sh, systemd unit, nginx config) — see DEPLOYMENT.md.
+- Settings → Masters (Plants & Transporters admin CRUD) and Settings → System Status (API/DB/Playwright/Gemini health, disk/CPU/RAM, queues, last backup, recent failures via GET /api/system/status).
 - Frontend builds cleanly on Node 20 with `npm install && npm run build` (React 18, Router 6, CRA 5).
 - Fully branded as Grewal Engineering Works.

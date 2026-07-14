@@ -62,9 +62,12 @@ if [[ ! -f .env ]]; then echo "REACT_APP_BACKEND_URL=" > .env; fi
 npm install
 npm run build
 
-echo "==> [7/9] Log directory"
-$SUDO mkdir -p /var/log/grewal
-$SUDO chown -R "$(whoami)":"$(id -gn)" /var/log/grewal
+echo "==> [7/9] Log + backup directories, nightly backup cron"
+$SUDO mkdir -p /var/log/grewal /var/backups/grewal
+$SUDO chown -R "$(whoami)":"$(id -gn)" /var/log/grewal /var/backups/grewal
+echo "0 2 * * * root bash $APP_DIR/deploy/backup.sh >> /var/log/grewal/backup.log 2>&1" | \
+  $SUDO tee /etc/cron.d/grewal-backup >/dev/null
+$SUDO chmod 644 /etc/cron.d/grewal-backup
 
 echo "==> [8/9] systemd service (grewal-api)"
 sed "s|__APP_DIR__|$APP_DIR|g; s|__RUN_USER__|$(whoami)|g" "$SCRIPT_DIR/grewal-api.service" | \
