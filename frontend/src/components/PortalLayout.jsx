@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import api from "@/lib/api";
 import { Outlet, NavLink, useNavigate, Link, useLocation } from "react-router-dom";
 import {
   Wrench, SquaresFour, Truck, Package, Receipt, Handshake, SealCheck,
@@ -80,6 +81,11 @@ export default function PortalLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [version, setVersion] = useState("");
+
+  useEffect(() => {
+    api.get("/health").then((r) => setVersion(r.data.version)).catch(() => {});
+  }, []);
 
   const handleLogout = async () => {
     await logout();
@@ -176,6 +182,7 @@ export default function PortalLayout() {
         <footer className="border-t border-border px-4 sm:px-8 py-3 no-print" data-testid="portal-footer">
           <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground text-center">
             © {new Date().getFullYear()} Grewal Engineering Works. All Rights Reserved.
+            {version ? ` · v${version}` : ""}
           </p>
         </footer>
       </div>

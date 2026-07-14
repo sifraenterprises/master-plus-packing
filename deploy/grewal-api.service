@@ -1,0 +1,22 @@
+[Unit]
+Description=Grewal Engineering Works — FastAPI backend
+After=network.target mongod.service
+Wants=mongod.service
+
+[Service]
+Type=simple
+User=__RUN_USER__
+WorkingDirectory=__APP_DIR__/backend
+EnvironmentFile=__APP_DIR__/backend/.env
+ExecStart=__APP_DIR__/backend/venv/bin/uvicorn server:app --host 127.0.0.1 --port 8001 --workers 1
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/grewal/api.service.log
+StandardError=append:/var/log/grewal/api.service.log
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

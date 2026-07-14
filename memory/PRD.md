@@ -130,6 +130,14 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 - Module cards: ASN Automation + Vendor Acknowledgement now Active; only DQMS Coming Soon (modules_routes.py seed + DB)
 - Testing iteration_11: frontend 100%, no runtime regressions from React 18/Router 6 downgrade
 
+## Implemented — Iteration 18 (June 2026): Production deployment hardening (Hostinger VPS)
+- requirements.txt curated: 130+ frozen packages → 16 direct deps (removed emergentintegrations, litellm custom wheel, stripe, boto3, pandas, numpy, openai, black/mypy/flake8 etc.); verified clean install in fresh venv AND full app boot from it (103 routes)
+- server.py hardening: required-env validation at boot (fails fast with clear message), GET /health + /api/health → {status:ok, version}, rotating logs (10MB×5, LOG_DIR env → /var/log/grewal, fallback backend/logs), security headers middleware, FastAPI version from /app/VERSION
+- deploy/ kit: install.sh (Ubuntu update, Node 20 via NodeSource, MongoDB 8, venv+pip, playwright chromium --with-deps, .env bootstrap with generated JWT_SECRET, frontend build, systemd+nginx setup w/ sed placeholders, health validation), update.sh, grewal-api.service (hardened unit), grewal-nginx.conf (SPA + /api proxy + 25m body + headers; nginx -t validated), .env.example, README.md
+- Docs & versioning: /app/DEPLOYMENT.md (full Hostinger guide incl. certbot HTTPS, rollback via git tags), /app/CHANGELOG.md (v1.0.0), /app/VERSION; portal footer shows "· v1.0.0" (from /api/health); backend/.env.example
+- Cleanup: auth_testing.md removed, stray test MD record removed, App.css comment fixed
+- Validation matrix all green: fresh pip install EXIT 0, npm build "Compiled successfully", nginx -t OK, backend boot + health + headers verified, frontend footer verified in browser
+
 ## Backlog
 - P0: none outstanding
 - P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration); "Masters" section in Settings (admin UI to add/remove Plants & Transporters); DQMS Automation module; split automation.py into automation/ package (eway.py, asn.py, vendor_ack.py); VPS go-live checklist (playwright install chromium --with-deps, Validate Portal, TAFE IP whitelist)

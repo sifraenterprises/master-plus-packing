@@ -6,6 +6,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 import os
 import logging
+from logging.handlers import RotatingFileHandler
 from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 
@@ -23,17 +24,65 @@ from routes.eway_routes import router as eway_router
 from routes.vendor_ack_routes import router as vendor_ack_router
 from routes.asn_routes import router as asn_router
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+REQUIRED_ENV = ["MONGO_URL", "DB_NAME", "JWT_SECRET", "ADMIN_USERNAME", "ADMIN_PASSWORD",
+                "DISPATCH_USERNAME", "DISPATCH_PASSWORD"]
+_missing = [k for k in REQUIRED_ENV if not os.environ.get(k)]
+if _missing:
+    raise RuntimeError(f"Missing required environment variables: {', '.join(_missing)} "
+                       f"(see backend/.env.example)")
+
+_version_file = ROOT_DIR.parent / "VERSION"
+APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "1.0"
+
+
+def _log_handlers():
+    handlers = [logging.StreamHandler()]
+    for candidate in (Path(os.environ.get("LOG_DIR", "/var/log/grewal")), ROOT_DIR / "logs"):
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            app_h = RotatingFileHandler(candidate / "api.log", maxBytes=10 * 1024 * 1024, backupCount=5)
+            err_h = RotatingFileHandler(candidate / "error.log", maxBytes=10 * 1024 * 1024, backupCount=5)
+            err_h.setLevel(logging.ERROR)
+            handlers += [app_h, err_h]
+            break
+        except OSError:
+            continue
+    return handlers
+
+
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                    handlers=_log_handlers())
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Grewal Engineering Works — Automation Portal")
+app = FastAPI(title="Grewal Engineering Works — Automation Portal", version=APP_VERSION)
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return response
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "version": APP_VERSION}
+
 
 api_router = APIRouter(prefix="/api")
 
 
 @api_router.get("/")
 async def root():
-    return {"message": "Grewal Engineering Works API", "status": "online"}
+    return {"message": "Grewal Engineering Works API", "status": "online", "version": APP_VERSION}
+
+
+@api_router.get("/health")
+async def api_health():
+    return {"status": "ok", "version": APP_VERSION}
 
 
 api_router.include_router(auth_router)
