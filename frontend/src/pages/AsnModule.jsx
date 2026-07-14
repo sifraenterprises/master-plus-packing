@@ -72,7 +72,12 @@ export default function AsnModule() {
       try {
         const { data } = await api.get("/asn/run-status");
         setRunInfo(data);
-        setAllocReq(data.awaiting_allocation || null);
+        setAllocReq((prev) => {
+          const next = data.awaiting_allocation || null;
+          if (!next) return null;
+          if (prev && prev.record_id === next.record_id && prev.part_number === next.part_number) return prev;
+          return next;
+        });
         if (!data.running) {
           clearInterval(pollRef.current);
           setRunning(false);

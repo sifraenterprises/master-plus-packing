@@ -98,6 +98,23 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 - Print button: @media print CSS — A4 portrait, hides sidebar/nav/buttons/scrollbars, shows only report, thead repeats per page (table-header-group), Arial 11pt, B/W
 - Self-tested: API rows/totals/filters, PDF text content, Excel structure, frontend generate + render (5 rows, total 23); seed data cleaned
 
+## Implemented — Iteration 14 (June 2026): ERP Reporting Dashboard (Reports page rebuild)
+- /portal/reports rebuilt (Reports.jsx + components/reports/*): 13 clickable KPI cards (today/month dispatches+boxes, pending/completed per module), Quick Reports row (Daily Dispatch Summary date dialog → daily-report page auto-generate via ?date=, Invoice Register, pending presets, Customer/Plant/Transporter/Monthly group dialogs w/ search+CSV), expandable Advanced Search (16 text/date filters + 5 status dropdowns, Search/Reset/Save Filter/Excel/PDF/CSV/Print)
+- Report table: invoice-centric rows joining master_dispatch↔packing_slips(invoice_number)↔asn_creation(master_dispatch_id)↔eway_submissions(record_id)↔vendor_eway_acknowledgement(dispatch_id); colored status badges (green/amber/red), server-side pagination+sorting, sticky headers, drag-resizable columns, column visibility selector, row click → workflow drill-down dialog (MD→Packing→ASN→E-Way→VendorAck→DQMS with timestamps/doc numbers/PDF download)
+- Charts (recharts): dispatches by month/customer/plant/transporter, boxes per day (30d), ASN/E-Way/VendorAck completion donuts
+- Backend /api/reports/*: erp (aggregation pipeline w/ $lookups + computed statuses), kpis, charts, group, erp/export (excel/pdf/csv w/ columns param), workflow/{id}; indexes added (invoice_date, plant, transporter_name, packing_slips.invoice_number). Old /reports/summary untouched
+- Saved Report Views: report_views collection — admin can save SHARED templates, dispatch personal only (403 enforced); per-user default view (report_view_prefs) auto-applied on page load; apply/set-default/delete from dropdown; exports use saved layout (visible columns)
+- Testing iteration_9: backend 28/28, frontend 100%, regressions pass
+
+## Implemented — Iteration 15 (June 2026): ASN Manual Batch Allocation
+- Automation pauses mid-run when a part shows the portal's "Batch Details" section: reads batch rows (Batch No/Batch Qty/Available Qty), publishes via run-status.awaiting_allocation, waits (asyncio.Event, 15-min timeout) for user confirmation, then fills "Quantity To be Confirmed" + Batch Considerable Yes/No per row and continues (live selectors: batch_container/batch_rows/batch_qty_input/batch_radio in portal_selectors.json)
+- BatchAllocationDialog (components/asn/): read-only Batch No/Batch Qty/Available Qty, editable Allocate Qty, Consider toggle, ASN Qty/Total Allocated/Remaining tiles, Auto Allocate/Clear/Confirm/Cancel; single-batch auto-fill; "ASN Quantity exceeds Available Batch Quantity." banner; per-row "Allocation cannot exceed Available Quantity."; Confirm disabled until Remaining=0
+- Endpoints: POST /api/asn/allocation/confirm (server validates over-allocation + total==ASN qty), /allocation/cancel (→ record Failed, no retry via BatchAllocationError), GET /api/asn/batch-allocations (report); record status "Awaiting Allocation"; allocations reused automatically on retries
+- Persistence: asn_batch_allocations collection (asn_number, dispatch_id, part, batch, qtys, considerable, created_by/at; indexed); shown in ASN Register excel ("Batch Allocations" column), Batch Allocation Report dialog (search+CSV) on ASN page, and Reports workflow drill-down (batches under ASN step)
+- TEST simulation: parts containing BATCH (LOW→insufficient single batch, MULTI→3 batches split) trigger the flow; non-BATCH parts unchanged
+- Fixed: critical dialog state-reset bug (poll re-created req object wiping inputs); VendorAck option hydration warning
+- Testing iteration_10: backend 16/16; frontend re-verified after fix (manual 15+20+5 split across 3 batches → Completed with ASN, values survive polling)
+
 ## Backlog
 - P0: none outstanding
 - P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration); "Masters" section in Settings (admin UI to add/remove Plants & Transporters); DQMS Automation module; split automation.py into automation/ package (eway.py, asn.py, vendor_ack.py); VPS go-live checklist (playwright install chromium --with-deps, Validate Portal, TAFE IP whitelist)

@@ -19,7 +19,8 @@ export const BatchAllocationDialog = ({ req, onDone }) => {
       return { ...b, allocate_qty: qty, consider: qty > 0, idx: i };
     });
     setRows(init);
-  }, [req]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [req?.record_id, req?.part_number]);
 
   const totals = useMemo(() => {
     const allocated = rows.reduce((a, r) => a + (parseFloat(r.allocate_qty) || 0), 0);

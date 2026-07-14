@@ -178,7 +178,7 @@ export default function VendorAckModule() {
               <option value="">— Select dispatch —</option>
               {rows.map((r) => (
                 <option key={r.dispatch_id} value={r.dispatch_id}>
-                  {r.dispatch_no} · {r.invoice_number} {r.asn_number ? `· ASN ${r.asn_number}` : "· (no ASN)"}
+                  {`${r.dispatch_no} · ${r.invoice_number} ${r.asn_number ? `· ASN ${r.asn_number}` : "· (no ASN)"}`}
                 </option>
               ))}
             </select>
