@@ -123,6 +123,13 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 - KEPT (functional, not visible branding): REACT_APP_BACKEND_URL preview domain, landing Gallery image CDN URLs, .emergent platform folder
 - Verified: zero "emergent" in rendered UI text on landing/login/dashboard; tab title + footer confirmed via browser
 
+## Implemented — Iteration 17 (June 2026): Frontend dependency tree fix (Node 20 + npm clean build)
+- Consistent CRA5-compatible set: react/react-dom 18.3.1, react-router-dom ^6.30.1, date-fns ^3.6.0, eslint ^8.57.1, direct ajv ^8; lodash ^4.17.21
+- Removed: @emergentbase/visual-edits (craco degrades gracefully), cra-template, @eslint/js, globals, unused eslint plugins, packageManager pin, 40-line yarn resolutions block → minimal npm overrides + yarn resolutions (webpack-dev-server ^5.2.4, nth-check)
+- package-lock.json committed; verified `npm install` (zero ERESOLVE, no flags) + `npm run build` = Compiled successfully on Node 20; yarn.lock re-synced for dev env
+- Module cards: ASN Automation + Vendor Acknowledgement now Active; only DQMS Coming Soon (modules_routes.py seed + DB)
+- Testing iteration_11: frontend 100%, no runtime regressions from React 18/Router 6 downgrade
+
 ## Backlog
 - P0: none outstanding
 - P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration); "Masters" section in Settings (admin UI to add/remove Plants & Transporters); DQMS Automation module; split automation.py into automation/ package (eway.py, asn.py, vendor_ack.py); VPS go-live checklist (playwright install chromium --with-deps, Validate Portal, TAFE IP whitelist)
