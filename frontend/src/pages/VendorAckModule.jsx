@@ -28,6 +28,8 @@ export default function VendorAckModule() {
   const [rows, setRows] = useState([]);
   const [stats, setStats] = useState({});
   const [plants, setPlants] = useState([]);
+  const [transporters, setTransporters] = useState([]);
+
   const [filters, setFilters] = useState({ status: "All", search: "" });
   const [mode, setMode] = useState("test");
   const [selectedId, setSelectedId] = useState("");
@@ -57,6 +59,7 @@ export default function VendorAckModule() {
   useEffect(() => {
     load();
     api.get("/master-dispatch/plants").then((r) => setPlants(r.data)).catch(() => {});
+    api.get("/master-dispatch/transporters").then((r) => setTransporters(r.data)).catch(() => {});
     api.get("/eway/settings").then((r) => setMode(r.data.mode)).catch(() => {});
     return () => pollRef.current && clearInterval(pollRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -134,6 +137,8 @@ export default function VendorAckModule() {
   };
 
   const plantOptions = panel?.plant && !plants.includes(panel.plant) ? [panel.plant, ...plants] : plants;
+  const transporterOptions = panel?.transporter && !transporters.includes(panel.transporter)
+    ? [panel.transporter, ...transporters] : transporters;
   const canStart = panel && panel.asn_number && panel.transporter && panel.plant && !running;
 
   return (
@@ -185,8 +190,12 @@ export default function VendorAckModule() {
           </div>
           <div>
             <label className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground block mb-1">Transporter</label>
-            <Input value={panel?.transporter || ""} onChange={(e) => setPanel({ ...panel, transporter: e.target.value })}
-                   disabled={!panel} data-testid="vack-transporter" className="h-9 rounded-sm bg-input border-border" />
+            <select value={panel?.transporter || ""} onChange={(e) => setPanel({ ...panel, transporter: e.target.value })}
+                    disabled={!panel} data-testid="vack-transporter"
+                    className="h-9 w-full rounded-sm bg-input border border-border text-sm px-2 focus:outline-none disabled:opacity-50">
+              <option value="">— Select Transporter —</option>
+              {transporterOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
           <div>
             <label className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground block mb-1">Plant</label>

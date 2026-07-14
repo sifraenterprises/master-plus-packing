@@ -101,10 +101,14 @@ const ITEM_COLS = [
 export default function MDForm({ entry, onChange, idPrefix }) {
   const itemsConf = entry.confidence?.items;
   const [plants, setPlants] = useState([]);
+  const [transporters, setTransporters] = useState([]);
   useEffect(() => {
     api.get("/master-dispatch/plants").then((r) => setPlants(r.data)).catch(() => {});
+    api.get("/master-dispatch/transporters").then((r) => setTransporters(r.data)).catch(() => {});
   }, []);
   const plantOptions = entry.plant && !plants.includes(entry.plant) ? [entry.plant, ...plants] : plants;
+  const transporterOptions = entry.transporter_name && !transporters.includes(entry.transporter_name)
+    ? [entry.transporter_name, ...transporters] : transporters;
   const setItem = (i, k, v) =>
     onChange({ ...entry, items: entry.items.map((it, j) => (j === i ? { ...it, [k]: v } : it)) });
 
@@ -176,7 +180,27 @@ export default function MDForm({ entry, onChange, idPrefix }) {
       <Section title="Transport">
         <Field label="Vehicle Number" k="vehicle_number" {...{ entry, onChange, idPrefix }} />
         <Field label="LR Number" k="lr_number" {...{ entry, onChange, idPrefix }} />
-        <Field label="Transporter Name" k="transporter_name" {...{ entry, onChange, idPrefix }} />
+        <div>
+          <label className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground flex items-center gap-1.5 mb-1">
+            Transporter Name
+            {entry.confidence?.transporter_name !== undefined && (
+              <Badge variant="outline" className={`rounded-sm text-[9px] px-1 py-0 ${entry.confidence.transporter_name < 90 ? "border-amber-500 text-amber-400" : "border-border text-muted-foreground"}`}>
+                {entry.confidence.transporter_name}%
+              </Badge>
+            )}
+          </label>
+          <select
+            value={entry.transporter_name || ""}
+            onChange={(e) => onChange({ ...entry, transporter_name: e.target.value })}
+            data-testid={`${idPrefix}-transporter_name`}
+            className="h-9 w-full rounded-sm bg-input border border-border text-sm px-3 focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="">— Select Transporter —</option>
+            {transporterOptions.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </div>
       </Section>
       <Section title="Tax" cols={5}>
         <Field label="CGST" k="cgst" type="number" {...{ entry, onChange, idPrefix }} />

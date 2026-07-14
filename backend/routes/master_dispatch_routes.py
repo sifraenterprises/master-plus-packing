@@ -156,6 +156,14 @@ async def retry_batch(batch_id: str, user: dict = Depends(get_current_user)):
 
 DEFAULT_PLANTS = ["TMTL - Production - Bhopal-700", "TAFE MOTORS AND TRACTORS LTD.-7075"]
 
+DEFAULT_TRANSPORTERS = [
+    "MAHALAKSHMI LOGISTICS PVT.LTD. - 331430",
+    "MAHALAKSHMI LOGISTICS PVT LTD - 337310",
+    "OM LOGISTICS SUPPLY CHAIN PVT - 339579",
+    "SAMPARK INDIA LOGISTICS PRIVAT - 334540",
+    "SUNTEK AXPRESS INDIA LIMITED - 339532",
+]
+
 
 class PlantInput(BaseModel):
     name: str
@@ -177,6 +185,25 @@ async def add_plant(body: PlantInput, user: dict = Depends(require_admin)):
         raise HTTPException(status_code=400, detail="Plant name is required")
     await db.plants.update_one({"name": name}, {"$setOnInsert": {"name": name, "created_at": utcnow().isoformat()}}, upsert=True)
     await log_activity(user["username"], "plant_added", name, "master_dispatch")
+    return {"ok": True, "name": name}
+
+
+@router.get("/transporters")
+async def list_transporters(user: dict = Depends(get_current_user)):
+    if await db.transporters.count_documents({}) == 0:
+        for t in DEFAULT_TRANSPORTERS:
+            await db.transporters.update_one({"name": t}, {"$setOnInsert": {"name": t, "created_at": utcnow().isoformat()}}, upsert=True)
+    docs = await db.transporters.find({}, {"_id": 0, "name": 1}).sort("name", 1).to_list(300)
+    return [d["name"] for d in docs]
+
+
+@router.post("/transporters")
+async def add_transporter(body: PlantInput, user: dict = Depends(require_admin)):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Transporter name is required")
+    await db.transporters.update_one({"name": name}, {"$setOnInsert": {"name": name, "created_at": utcnow().isoformat()}}, upsert=True)
+    await log_activity(user["username"], "transporter_added", name, "master_dispatch")
     return {"ok": True, "name": name}
 
 

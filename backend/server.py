@@ -95,6 +95,7 @@ async def startup():
     await db.vendor_eway_acknowledgement.create_index("status")
     await db.vendor_eway_acknowledgement.create_index([("created_at", -1)])
     await db.plants.create_index("name", unique=True)
+    await db.transporters.create_index("name", unique=True)
     await db.automation_logs.create_index([("timestamp", -1)])
     await seed_user("ADMIN_USERNAME", "ADMIN_PASSWORD", "Administrator", "admin")
     await seed_user("DISPATCH_USERNAME", "DISPATCH_PASSWORD", "Dispatch Operator", "dispatch")

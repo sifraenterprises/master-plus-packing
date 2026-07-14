@@ -78,6 +78,10 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 - Frontend /portal/modules/vendor-ack: stats, Acknowledgement Panel (record select auto-fills, Start Automation), grid (status colors, ack date, portal message, View Screenshot/View Log/Retry actions)
 - Testing iteration_7: backend 23/23, frontend 100%, regressions all pass; test data cleaned after run
 
+## Implemented — Iteration 11 (June 2026): Transporters master dropdown
+- New configurable transporters collection seeded with portal values: MAHALAKSHMI LOGISTICS PVT.LTD. - 331430, MAHALAKSHMI LOGISTICS PVT LTD - 337310, OM LOGISTICS SUPPLY CHAIN PVT - 339579, SAMPARK INDIA LOGISTICS PRIVAT - 334540, SUNTEK AXPRESS INDIA LIMITED - 339532
+- GET/POST /api/master-dispatch/transporters (POST admin-only); MDForm Transporter Name is now a dropdown (keeps OCR value as extra option, confidence badge preserved); Vendor Ack panel Transporter is a dropdown too
+
 ## Backlog
 - P0: none outstanding
 - P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration)
