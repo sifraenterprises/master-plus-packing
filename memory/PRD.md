@@ -82,9 +82,17 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 - New configurable transporters collection seeded with portal values: MAHALAKSHMI LOGISTICS PVT.LTD. - 331430, MAHALAKSHMI LOGISTICS PVT LTD - 337310, OM LOGISTICS SUPPLY CHAIN PVT - 339579, SAMPARK INDIA LOGISTICS PRIVAT - 334540, SUNTEK AXPRESS INDIA LIMITED - 339532
 - GET/POST /api/master-dispatch/transporters (POST admin-only); MDForm Transporter Name is now a dropdown (keeps OCR value as extra option, confidence badge preserved); Vendor Ack panel Transporter is a dropdown too
 
+## Implemented — Iteration 12 (June 2026): ASN Creation Automation module (Phase 1 + 2)
+- New /api/asn/* (routes/asn_routes.py) + asn_creation collection (master_dispatch_id unique): import from MD (only dispatches with empty asn_number, idempotent), records (filter/search/pagination), edit (manual PO Number override — synced back to master_dispatch, transporter, amounts, Field(ge=0)), PDI PDF upload (validated %PDF, gates Draft→Ready), run/run-ready/retry-failed queue (one ASN at a time, max 3 auto-retries), run-status, stats, xlsx export, screenshot serving
+- ASNAutomation class in automation.py implements exact TAFE sequence: Login → Create ASN → select PO (exact text) → Search → per dispatched part "Click here to Add to Invoice" + ASN Qty → fill Invoice No/Date/Basic/Total (+cgst/sgst/igst/cases optional) → Transporter (exact visible text) → attach PDI → wait upload → Create ASN → capture generated ASN Number. On success: asn_number saved on record + linked master_dispatch (status ready_for_eway). Failure: error_message + after_failure screenshot + page HTML dump + retry. TEST triggers: NOPO→DropdownMatchError, ERR→AutomationError
+- Fixed invalid mixed-engine Playwright selectors (attach_success, no_details_indicator now CSS :text()); removed dead duplicate ASNAutomation stub
+- Frontend /portal/modules/asn (AsnModule.jsx): stats tiles, Import From MD, Start Automation, Retry Failed, Export Excel, status filter + search, per-row Edit (manual PO)/Attach PDI/Run/View Log, live queue progress bar, log dialog
+- Phase 2 confirmed done: MD OCR (md_ocr.py) extracts po_number, asn_number, plant during invoice upload; shown on verification form; import skips MDs that already have an ASN
+- Testing iteration_8: backend 8/8, frontend 100%, regressions (MD, E-Way, Vendor Ack) pass; test seed data cleaned
+
 ## Backlog
 - P0: none outstanding
-- P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration)
+- P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration); "Masters" section in Settings (admin UI to add/remove Plants & Transporters); DQMS Automation module; split automation.py into automation/ package (eway.py, asn.py, vendor_ack.py); VPS go-live checklist (playwright install chromium --with-deps, Validate Portal, TAFE IP whitelist)
 - P2: barcode/QR generation, email/WhatsApp/SMS notifications, SAP/ERP integrations, per-user password change UI, dashboard charts (recharts)
 
 ## Test Credentials

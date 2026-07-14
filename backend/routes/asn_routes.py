@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, UploadFile, File
 from fastapi.responses import StreamingResponse, FileResponse
 from bson import ObjectId
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pathlib import Path
 from database import db
 from models import utcnow
@@ -34,8 +34,8 @@ class RunRequest(BaseModel):
 class AsnEditInput(BaseModel):
     po_number: str = ""
     transporter: str = ""
-    basic_amount: float = 0
-    total_amount: float = 0
+    basic_amount: float = Field(0, ge=0)
+    total_amount: float = Field(0, ge=0)
 
 
 def now_iso():
