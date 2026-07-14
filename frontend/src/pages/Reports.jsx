@@ -1,188 +1,163 @@
-import { useEffect, useState, useCallback } from "react";
-import { FileXls, FilePdf, Funnel, ArrowCounterClockwise } from "@phosphor-icons/react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import api, { apiError } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
+import { EMPTY_FILTERS, DEFAULT_VISIBLE, COLUMNS, downloadBlob } from "@/components/reports/reportConfig";
+import { KpiCards } from "@/components/reports/KpiCards";
+import { AdvancedFilters } from "@/components/reports/AdvancedFilters";
+import { QuickReports } from "@/components/reports/QuickReports";
+import { ReportTable } from "@/components/reports/ReportTable";
+import { ReportCharts } from "@/components/reports/ReportCharts";
+import { WorkflowDialog } from "@/components/reports/WorkflowDialog";
 
-const EMPTY_FILTERS = { invoice: "", part: "", customer: "", date_from: "", date_to: "" };
+const PRINT_CSS = `
+@media print {
+  @page { size: A4 portrait; margin: 10mm; }
+  html, body { background: #fff !important; }
+  body * { visibility: hidden !important; }
+  #erp-report-print, #erp-report-print * { visibility: visible !important; }
+  #erp-report-print { position: absolute !important; left: 0; top: 0; width: 100%; max-height: none !important; overflow: visible !important; border: none !important; background: #fff !important; }
+  #erp-report-print table { min-width: 0 !important; width: 100% !important; table-layout: auto !important; }
+  #erp-report-print th, #erp-report-print td { color: #000 !important; background: #fff !important; border: 1px solid #000 !important; padding: 3px 5px !important; font-size: 8pt !important; position: static !important; }
+  #erp-report-print thead { display: table-header-group; }
+  .no-print { display: none !important; }
+}`;
 
 export default function Reports() {
+  const { user } = useAuth();
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [records, setRecords] = useState([]);
-  const [summary, setSummary] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState([]);
+  const [kpis, setKpis] = useState({});
+  const [charts, setCharts] = useState(null);
+  const [views, setViews] = useState([]);
+  const [defaultViewId, setDefaultViewId] = useState("");
+  const [visibleCols, setVisibleCols] = useState(DEFAULT_VISIBLE);
+  const [sort, setSort] = useState({ by: "created_at", dir: "desc" });
   const [page, setPage] = useState(1);
   const [pageInfo, setPageInfo] = useState({ total: 0, pages: 1 });
+  const [loading, setLoading] = useState(false);
+  const [drillRec, setDrillRec] = useState(null);
+  const booted = useRef(false);
 
-  const activeParams = useCallback((f) => {
-    const params = {};
-    Object.entries(f).forEach(([k, v]) => {
-      if (v) params[k] = v;
-    });
-    return params;
+  const activeParams = (f) => Object.fromEntries(Object.entries(f).filter(([, v]) => v));
+
+  const load = useCallback(async (f = filters, p = 1, s = sort) => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/reports/erp", {
+        params: { ...activeParams(f), page: p, page_size: 25, sort_by: s.by, sort_dir: s.dir },
+      });
+      setRows(data.items);
+      setPageInfo({ total: data.total, pages: data.pages });
+      setPage(data.page);
+    } catch (err) {
+      toast.error(apiError(err));
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, sort]);
+
+  const loadMeta = useCallback(() => {
+    api.get("/reports/kpis").then((r) => setKpis(r.data)).catch(() => {});
+    api.get("/reports/charts").then((r) => setCharts(r.data)).catch(() => {});
   }, []);
 
-  const load = useCallback(
-    async (f, p = 1) => {
-      setLoading(true);
-      try {
-        const { data } = await api.get("/dispatch", { params: { ...activeParams(f), page: p } });
-        setRecords(data.items);
-        setPageInfo({ total: data.total, pages: data.pages });
-        setPage(data.page);
-      } catch (err) {
-        toast.error(apiError(err));
-      } finally {
-        setLoading(false);
+  const loadViews = useCallback(async (applyDefault = false) => {
+    try {
+      const { data } = await api.get("/reports/views");
+      setViews(data.views);
+      setDefaultViewId(data.default_view_id);
+      if (applyDefault && data.default_view_id) {
+        const v = data.views.find((x) => x.id === data.default_view_id);
+        if (v) {
+          applyView(v);
+          return true;
+        }
       }
-    },
-    [activeParams]
-  );
+    } catch (err) { /* ignore */ }
+    return false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const applyView = (v) => {
+    const f = { ...EMPTY_FILTERS, ...(v.filters || {}) };
+    setFilters(f);
+    if (v.columns?.length) setVisibleCols(v.columns.filter((k) => COLUMNS.some((c) => c.k === k)));
+    load(f, 1);
+    toast.info(`Report view "${v.name}" applied`);
+  };
 
   useEffect(() => {
-    load(EMPTY_FILTERS);
-    api.get("/reports/summary").then((r) => setSummary(r.data)).catch(() => {});
-  }, [load]);
+    if (booted.current) return;
+    booted.current = true;
+    loadMeta();
+    loadViews(true).then((applied) => { if (!applied) load(EMPTY_FILTERS, 1); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const exportFile = async (type) => {
+  const applyKpiFilter = (patch) => {
+    const f = { ...EMPTY_FILTERS, ...patch };
+    setFilters(f);
+    load(f, 1);
+  };
+
+  const applyQuick = (patch, quickSort) => {
+    const f = { ...EMPTY_FILTERS, ...patch };
+    const s = quickSort || sort;
+    setFilters(f);
+    if (quickSort) setSort(quickSort);
+    load(f, 1, s);
+  };
+
+  const onSort = (key) => {
+    const next = { by: key, dir: sort.by === key && sort.dir === "desc" ? "asc" : "desc" };
+    setSort(next);
+    load(filters, 1, next);
+  };
+
+  const exportFile = async (format) => {
     try {
-      const res = await api.get(`/dispatch/export/${type}`, { params: activeParams(filters), responseType: "blob" });
-      const url = URL.createObjectURL(res.data);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = type === "excel" ? "dispatch_report.xlsx" : "dispatch_report.pdf";
-      a.click();
-      URL.revokeObjectURL(url);
+      const res = await api.get("/reports/erp/export", {
+        params: { ...activeParams(filters), format, columns: visibleCols.join(","), sort_by: sort.by, sort_dir: sort.dir },
+        responseType: "blob",
+      });
+      downloadBlob(res.data, `erp_report.${format === "excel" ? "xlsx" : format}`);
     } catch (err) {
       toast.error("Export failed");
     }
   };
 
-  const set = (k) => (e) => setFilters({ ...filters, [k]: e.target.value });
-
   return (
-    <div className="max-w-7xl space-y-8" data-testid="reports-page">
-      <div>
-        <p className="text-xs uppercase tracking-[0.3em] text-primary mb-2">Analytics</p>
+    <div className="max-w-[1400px] space-y-5" data-testid="reports-page">
+      <style>{PRINT_CSS}</style>
+      <div className="no-print">
+        <p className="text-xs uppercase tracking-[0.3em] text-primary mb-2">ERP Analytics</p>
         <h1 className="text-3xl font-black tracking-tight">Reports</h1>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-5 border border-border rounded-sm overflow-hidden">
-        {[
-          { label: "Total Dispatches", value: summary?.total_dispatches },
-          { label: "This Month", value: summary?.this_month },
-          { label: "Customers", value: summary?.unique_customers },
-          { label: "PDFs Processed", value: summary?.pdfs_uploaded },
-          { label: "Total Value (₹)", value: summary?.total_value?.toLocaleString("en-IN") },
-        ].map((s, i) => (
-          <div key={s.label} className={`bg-card p-5 ${i < 4 ? "lg:border-r border-border" : ""} ${i % 2 === 0 ? "border-r lg:border-r" : ""} border-b lg:border-b-0 border-border`} data-testid={`report-stat-${i}`}>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-2">{s.label}</p>
-            <p className="text-xl font-black font-mono">{s.value ?? "—"}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="border border-border bg-card rounded-sm p-6 space-y-4" data-testid="report-filters">
-        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-2">
-          <Funnel size={14} className="text-primary" /> Search & Filter
+        <p className="text-sm text-muted-foreground mt-1">
+          Live workflow reporting across Master Dispatch, Packing, ASN, E-Way Bill, Vendor Acknowledgement and DQMS.
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {[
-            { key: "invoice", label: "Invoice Number" },
-            { key: "part", label: "Part Number" },
-            { key: "customer", label: "Customer" },
-            { key: "date_from", label: "Date From", type: "date" },
-            { key: "date_to", label: "Date To", type: "date" },
-          ].map((f) => (
-            <div key={f.key} className="space-y-1.5">
-              <Label className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">{f.label}</Label>
-              <Input
-                type={f.type || "text"}
-                value={filters[f.key]}
-                onChange={set(f.key)}
-                data-testid={`filter-${f.key.replace(/_/g, "-")}-input`}
-                className="rounded-sm bg-input border-border focus-visible:ring-primary h-9"
-              />
-            </div>
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => load(filters)} data-testid="apply-filters-button" className="rounded-sm active:scale-95 transition-transform">
-            {loading ? "Searching..." : "Apply Filters"}
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              setFilters(EMPTY_FILTERS);
-              load(EMPTY_FILTERS);
-            }}
-            data-testid="reset-filters-button"
-            className="rounded-sm gap-1"
-          >
-            <ArrowCounterClockwise size={14} /> Reset
-          </Button>
-          <div className="flex-1" />
-          <Button variant="secondary" size="sm" onClick={() => exportFile("excel")} data-testid="report-export-excel-button" className="rounded-sm gap-1">
-            <FileXls size={15} /> Export Excel
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => exportFile("pdf")} data-testid="report-export-pdf-button" className="rounded-sm gap-1">
-            <FilePdf size={15} /> Export PDF
-          </Button>
-        </div>
       </div>
 
-      <div className="border border-border rounded-sm overflow-x-auto bg-card">
-        <Table data-testid="report-results-table">
-          <TableHeader>
-            <TableRow className="hover:bg-transparent border-border">
-              {["Dispatch ID", "Invoice No", "Invoice Date", "Customer", "PO No", "Part No", "Qty", "Total", "Dispatch Date", "Vendor"].map((h) => (
-                <TableHead key={h} className="text-[10px] uppercase tracking-[0.15em] whitespace-nowrap">{h}</TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {records.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={10} className="text-center text-muted-foreground py-10" data-testid="report-no-results">
-                  No records match your filters.
-                </TableCell>
-              </TableRow>
-            ) : (
-              records.map((r) => (
-                <TableRow key={r.id} className="border-border hover:bg-secondary/50">
-                  <TableCell className="font-mono text-primary text-xs whitespace-nowrap">{r.dispatch_id}</TableCell>
-                  <TableCell className="whitespace-nowrap">{r.invoice_number}</TableCell>
-                  <TableCell className="whitespace-nowrap">{r.invoice_date}</TableCell>
-                  <TableCell className="max-w-[160px] truncate">{r.customer_name}</TableCell>
-                  <TableCell className="whitespace-nowrap">{r.po_number}</TableCell>
-                  <TableCell className="whitespace-nowrap">{r.part_number}</TableCell>
-                  <TableCell>{r.quantity}</TableCell>
-                  <TableCell className="font-mono">{r.total_value?.toLocaleString("en-IN")}</TableCell>
-                  <TableCell className="whitespace-nowrap">{r.dispatch_date}</TableCell>
-                  <TableCell className="max-w-[120px] truncate">{r.vendor_name}</TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+      <div className="no-print"><KpiCards kpis={kpis} onApply={applyKpiFilter} /></div>
+      <div className="no-print"><QuickReports onApply={applyQuick} /></div>
+      <div className="no-print">
+        <AdvancedFilters
+          filters={filters} setFilters={setFilters} loading={loading}
+          onSearch={() => load(filters, 1)}
+          onReset={() => { setFilters(EMPTY_FILTERS); setSort({ by: "created_at", dir: "desc" }); load(EMPTY_FILTERS, 1, { by: "created_at", dir: "desc" }); }}
+          onExport={exportFile} onPrint={() => window.print()}
+          views={views} defaultViewId={defaultViewId} onApplyView={applyView}
+          onViewsChanged={() => loadViews()} isAdmin={user?.role === "admin"}
+        />
       </div>
-      <div className="flex items-center justify-between flex-wrap gap-3" data-testid="report-pagination">
-        <p className="text-xs text-muted-foreground" data-testid="report-record-count">
-          {pageInfo.total} record(s) — page {page} of {pageInfo.pages}
-        </p>
-        <div className="flex gap-2">
-          <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => load(filters, page - 1)} data-testid="report-prev-page" className="rounded-sm">
-            Previous
-          </Button>
-          <Button variant="secondary" size="sm" disabled={page >= pageInfo.pages} onClick={() => load(filters, page + 1)} data-testid="report-next-page" className="rounded-sm">
-            Next
-          </Button>
-        </div>
-      </div>
+
+      <ReportTable rows={rows} visibleCols={visibleCols} setVisibleCols={setVisibleCols}
+                   sort={sort} onSort={onSort} onRowClick={setDrillRec}
+                   page={page} pageInfo={pageInfo} onPage={(p) => load(filters, p)} loading={loading} />
+
+      <ReportCharts charts={charts} />
+      <WorkflowDialog record={drillRec} onClose={() => setDrillRec(null)} />
     </div>
   );
 }

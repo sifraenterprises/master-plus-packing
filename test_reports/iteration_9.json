@@ -1,0 +1,25 @@
+{
+  "summary": "Full backend + frontend testing of the new ERP Reporting Dashboard (/portal/reports). All 28 pytest cases pass (kpis, erp list w/ pagination+sort+filters+status computation on invoice 26-27/2001, exports excel/pdf/csv with columns param, charts, group by customer/plant/transporter/month + bogus=400, workflow drill-down 6 ordered steps + invalid/missing, saved views RBAC — admin shared 200 / dispatch shared 403 / dispatch personal + set-default persists / dispatch cannot delete admin shared 403 / shared views visible to dispatch, regression on /reports/summary, /master-dispatch, /master-dispatch/daily-report). Frontend admin flow: 13 KPI cards render, KPI pending_asn click filters to 2 records, invoice=2001 filter narrows to 1 row, reset restores 4 rows, filters-toggle collapses/expands, sort-invoice_number toggles order, columns-toggle hides Plant column, row click opens workflow-dialog with 6 ordered steps + COMPLETED/PENDING badges + LOT-77 packing + ASN2696001 for 2001, all 6 chart panels render (recharts), quick-pending-asn applies filter, quick-customer-dispatch opens group dialog with export-csv, quick-daily-dispatch-summary opens date picker dialog, admin filters-save shows save-view-shared checkbox. Dispatch user: save-view-shared checkbox hidden, saved-view dropdown shows both admin's shared 'Pending ASN Shared' and personal 'my personal'. 0 JS errors across all pages. Regression: dashboard, master-dispatch, daily-report, asn, eway, vendor-ack all load cleanly.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_reports.py",
+    "/app/test_reports/pytest/reports_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "reports_routes.build_erp_pipeline recomputes the full aggregation for every /kpis call (adds all lookups + status compute); acceptable at current data volume (<1k dispatches) but consider a lighter counter-only pipeline once volume grows.",
+    "erp/export loads up to 10000 docs into memory before streaming; fine for now but should stream via aggregate cursor for very large exports.",
+    "AdvancedFilters.jsx save-view POST currently sends filters as-is; backend strips non-strings — consider showing user which filters were persisted vs dropped (e.g. numeric page_size ignored).",
+    "WorkflowDialog fetch has no loading skeleton — a brief empty dialog is visible before steps load (~200ms). Not a blocker but a small UX polish opportunity.",
+    "reports_routes /group values sum uses invoice_total which may be null on older docs (guarded by $ifNull, OK)."
+  ],
+  "updated_files": ["/app/backend/tests/test_reports.py"],
+  "success_rate": {"backend": "100% (28/28)", "frontend": "100%"},
+  "test_credentials": "admin/5@Sohangso, dispatch/5@Grewal (per /app/memory/test_credentials.md)",
+  "seed_data_creation": "Test suite creates and cleans up transient views prefixed TEST_ (TEST_shared_view, TEST_dispatch_personal, TEST_admin_shared_del, TEST_admin_shared_vis, TEST_dispatch_shared). No dispatch/invoice data mutated. Existing admin 'Pending ASN Shared' + dispatch 'my personal' views preserved.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "ERP Reporting Dashboard end-to-end validated (28 backend + comprehensive UI). Data set: 4 master_dispatch (26-27/1032, /2001 w/ LOT-77 packing, /2002 pending, /2003 pending). Workflow dialog verified against 26-27/2001 showing Packing/ASN/Vendor Ack Completed and E-Way/DQMS Pending. Re-run: pytest /app/backend/tests/test_reports.py -v",
+  "rca of the issue": "N/A — no issues found. All acceptance criteria from review_request met: (a) /kpis returns today/month + pending_/completed_ for all 5 status keys with dqms completed=0 (module not built = expected), (b) /erp joins packing_slips+asn_creation+eway_submissions+vendor_eway_acknowledgement correctly, filter+sort+pagination work, status computation matches (2001 packing/asn/vack Completed, eway Pending), (c) exports return correct content-types and respect columns param, (d) /charts returns all 6 keys incl completion% for asn/eway/vendor_ack, (e) /group supports customer|plant|transporter|month and rejects bogus with 400, (f) /workflow returns 6 ordered steps with status/doc_no/timestamp and validates id, (g) Views RBAC enforced end-to-end + per-user default_view_id persisted, (h) regression endpoints intact, (i) UI 13 KPIs + 6 charts + quick reports + filters + save-view + row-drill-down + column toggle + dispatch user restrictions all working with 0 JS errors."
+}

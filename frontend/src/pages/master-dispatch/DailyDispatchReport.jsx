@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Printer, FilePdf, FileXls, ClipboardText } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
@@ -18,8 +19,9 @@ const PRINT_CSS = `
 }`;
 
 export default function DailyDispatchReport() {
+  const [searchParams] = useSearchParams();
   const today = new Date().toISOString().slice(0, 10);
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState(searchParams.get("date") || today);
   const [customer, setCustomer] = useState("");
   const [company, setCompany] = useState("");
   const [options, setOptions] = useState({ customers: [], companies: [] });
@@ -28,6 +30,8 @@ export default function DailyDispatchReport() {
 
   useEffect(() => {
     api.get("/master-dispatch/daily-report/options").then((r) => setOptions(r.data)).catch(() => {});
+    if (searchParams.get("date")) generate(searchParams.get("date"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const params = () => {
@@ -37,11 +41,11 @@ export default function DailyDispatchReport() {
     return p;
   };
 
-  const generate = async () => {
-    if (!date) return toast.error("Dispatch Date is required");
+  const generate = async (d = date) => {
+    if (!d) return toast.error("Dispatch Date is required");
     setLoading(true);
     try {
-      const { data } = await api.get("/master-dispatch/daily-report", { params: params() });
+      const { data } = await api.get("/master-dispatch/daily-report", { params: { ...params(), date: d } });
       setReport(data);
       if (data.rows.length === 0) toast.info("No dispatches found for the selected date");
     } catch (err) {
@@ -100,7 +104,7 @@ export default function DailyDispatchReport() {
             {options.companies.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
-        <Button onClick={generate} disabled={loading} data-testid="daily-report-generate" className="rounded-sm h-9">
+        <Button onClick={() => generate()} disabled={loading} data-testid="daily-report-generate" className="rounded-sm h-9">
           {loading ? "Generating…" : "Generate Report"}
         </Button>
       </div>
