@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field
+import re
+from pydantic import BaseModel, Field, field_validator
 from models import BaseDocument, utcnow
 
 MD_STATUSES = ("pending", "ready_for_asn", "ready_for_eway", "completed")
@@ -80,3 +81,9 @@ class MasterDispatchInput(BaseModel):
     remarks: str = ""
     status: str = Field(default="pending", pattern="^(pending|ready_for_asn|ready_for_eway|completed)$")
     verified: bool = False
+
+    @field_validator("eway_bill_number")
+    @classmethod
+    def normalize_eway_bill(cls, v: str) -> str:
+        digits = re.sub(r"\D", "", v or "")
+        return digits if len(digits) == 12 else (v or "").strip()

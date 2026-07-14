@@ -11,7 +11,7 @@ import {
 import { toast } from "sonner";
 import api, { apiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import MDForm, { STATUS_OPTIONS, normalizeMD } from "@/components/md/MDForm";
+import MDForm, { STATUS_OPTIONS, normalizeMD, formatEway } from "@/components/md/MDForm";
 import MDRecordsTable, { STATUS_LABELS, STATUS_STYLES } from "@/components/md/MDRecordsTable";
 import MDStats from "@/components/md/MDStats";
 
@@ -205,7 +205,7 @@ export default function DispatchList() {
                   ["Vehicle", viewRec.vehicle_number], ["LR No", viewRec.lr_number], ["Transporter", viewRec.transporter_name],
                   ["CGST", viewRec.cgst], ["SGST", viewRec.sgst], ["IGST", viewRec.igst],
                   ["GST Total", viewRec.gst_total], ["Invoice Total", `₹ ${viewRec.invoice_total?.toLocaleString("en-IN")}`],
-                  ["E-Way Bill", viewRec.eway_bill_number], ["IRN", viewRec.irn], ["ACK No", viewRec.ack_number],
+                  ["E-Way Bill", formatEway(viewRec.eway_bill_number) || viewRec.eway_bill_number], ["IRN", viewRec.irn], ["ACK No", viewRec.ack_number],
                 ].map(([label, val]) => (
                   <div key={label}>
                     <p className="text-[9px] uppercase tracking-[0.15em] text-muted-foreground">{label}</p>

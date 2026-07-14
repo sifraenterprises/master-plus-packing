@@ -28,6 +28,11 @@ const num = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+export function formatEway(v) {
+  const digits = String(v || "").replace(/\D/g, "").slice(0, 12);
+  return digits.replace(/(\d{4})(?=\d)/g, "$1 ").trim();
+}
+
 export function normalizeMD(e) {
   const base = Object.fromEntries(Object.keys(MD_EMPTY).map((k) => [k, e[k] ?? MD_EMPTY[k]]));
   return {
@@ -45,6 +50,7 @@ export function normalizeMD(e) {
 function Field({ label, k, entry, onChange, idPrefix, type = "text" }) {
   const conf = entry.confidence?.[k];
   const low = conf !== undefined && conf < 90;
+  const isEway = k === "eway_bill_number";
   return (
     <div>
       <label className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground flex items-center gap-1.5 mb-1">
@@ -61,10 +67,11 @@ function Field({ label, k, entry, onChange, idPrefix, type = "text" }) {
       </label>
       <Input
         type={type}
-        value={entry[k] ?? ""}
-        onChange={(e) => onChange({ ...entry, [k]: e.target.value })}
+        value={isEway ? formatEway(entry[k]) || (entry[k] ?? "") : entry[k] ?? ""}
+        placeholder={isEway ? "XXXX XXXX XXXX" : undefined}
+        onChange={(e) => onChange({ ...entry, [k]: isEway ? e.target.value.replace(/[^\d\s]/g, "").slice(0, 14) : e.target.value })}
         data-testid={`${idPrefix}-${k}`}
-        className={`h-9 rounded-sm bg-input border-border focus-visible:ring-primary ${low ? "border-amber-500/70 ring-1 ring-amber-500/30" : ""}`}
+        className={`h-9 rounded-sm bg-input border-border focus-visible:ring-primary ${isEway ? "font-mono" : ""} ${low ? "border-amber-500/70 ring-1 ring-amber-500/30" : ""}`}
       />
     </div>
   );

@@ -111,6 +111,15 @@ async def build_record_query(status=None, invoice=None, dispatch=None, date=None
 
 # ---------- Batch runner on the shared automation engine ----------
 
+def format_eway(v: str) -> str:
+    """Portal format: XXXX XXXX XXXX (12 digits in groups of 4)."""
+    import re as _re
+    digits = _re.sub(r"\D", "", v or "")
+    if len(digits) == 12:
+        return f"{digits[0:4]} {digits[4:8]} {digits[8:12]}"
+    return (v or "").strip()
+
+
 def eway_prepare(md: dict, sub: dict):
     if not (md.get("eway_bill_number") or "").strip():
         return None, "E-Way Bill Number is blank"
@@ -118,7 +127,7 @@ def eway_prepare(md: dict, sub: dict):
         return None, "validity dates are blank"
     return {
         "company_code": (sub.get("company_code") or "").strip() or "TMTL",
-        "eway_bill_number": md["eway_bill_number"],
+        "eway_bill_number": format_eway(md["eway_bill_number"]),
         "eway_from_validity": sub["from_validity"],
         "eway_to_validity": sub["to_validity"],
     }, None

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import api, { apiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { formatEway } from "@/components/md/MDForm";
 
 const STATUS_CLS = {
   Pending: "border-amber-500/50 text-amber-400",
@@ -259,7 +260,7 @@ export default function EwayEntryTab() {
                     <TableCell className="font-mono text-primary text-xs whitespace-nowrap">{r.dispatch_no}</TableCell>
                     <TableCell className="font-mono text-xs whitespace-nowrap">{r.invoice_no}</TableCell>
                     <TableCell className="font-mono text-xs whitespace-nowrap">
-                      {r.eway_bill_number || <span className="text-muted-foreground/50">blank</span>}
+                      {r.eway_bill_number ? (formatEway(r.eway_bill_number) || r.eway_bill_number) : <span className="text-muted-foreground/50">blank</span>}
                     </TableCell>
                     <TableCell className="font-mono text-[10px] whitespace-nowrap text-muted-foreground">
                       {r.from_validity || r.to_validity ? `${r.from_validity || "—"} → ${r.to_validity || "—"}` : <span className="text-amber-400">not set</span>}
@@ -319,8 +320,8 @@ export default function EwayEntryTab() {
           {editRec && (
             <div className="space-y-3">
               <div>
-                <label className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground block mb-1">E-Way Bill Number (from Master Dispatch)</label>
-                <Input value={editRec.eway_bill_number} disabled data-testid="eway-edit-billno" className="h-9 rounded-sm bg-input border-border font-mono opacity-70" />
+                <label className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground block mb-1">E-Way Bill Number (from Master Dispatch, format XXXX XXXX XXXX)</label>
+                <Input value={formatEway(editRec.eway_bill_number) || editRec.eway_bill_number} disabled data-testid="eway-edit-billno" className="h-9 rounded-sm bg-input border-border font-mono opacity-70" />
               </div>
               <div>
                 <label className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground block mb-1">Company Code</label>

@@ -310,7 +310,7 @@ async def validate_portal(attempt_login=False, headless=True, log=None, dry_run_
                 today = datetime.now(timezone.utc)
                 sample = {
                     "company_code": "TMTL",
-                    "eway_bill_no": "351099999901",
+                    "eway_bill_no": "3510 9999 9901",
                     "from_validity": today.strftime("%d/%m/%Y"),
                     "to_validity": (today + timedelta(days=5)).strftime("%d/%m/%Y"),
                 }

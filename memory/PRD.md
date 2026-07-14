@@ -61,6 +61,9 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 - RESULT: portal UNREACHABLE from this cloud environment — DNS resolves (103.57.69.174) but all TCP ports filtered while general internet works → TAFE blocks datacenter/non-whitelisted IPs. Validation correctly reports "connect: Portal unreachable"; LIVE mode remains honestly gated (portal validation not marked passed)
 - TO DO ON VPS: deploy, `playwright install chromium --with-deps`, click "Validate Portal" (both checkboxes) in Selector Config tab; if VPS is also blocked, ask TAFE to whitelist the VPS IP. Selectors in portal_selectors.json are best-guess and editable in-app once the real page is reachable
 
+## Implemented — Iteration 8 (June 2026): E-Way Bill number format XXXX XXXX XXXX
+- Storage normalized to 12 digits (OCR build_record + MasterDispatchInput validator); display/input formatted "XXXX XXXX XXXX" (formatEway in MDForm, used in MD form/view + E-Way table/dialog); portal fill uses grouped format (format_eway in eway_routes); dry-run sample updated. TEST validation still 11/11.
+
 ## Backlog
 - P0: none outstanding
 - P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration)

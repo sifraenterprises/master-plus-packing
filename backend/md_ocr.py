@@ -151,6 +151,11 @@ async def next_md_no() -> str:
     return f"GEW-MD-{counter['seq']:05d}"
 
 
+def normalize_eway(v: str) -> str:
+    digits = re.sub(r"\D", "", v or "")
+    return digits if len(digits) == 12 else (v or "").strip()
+
+
 def build_record(inv: dict, created_by: str) -> MasterDispatch:
     confidence = {k: max(0, min(100, _i(v))) for k, v in (inv.get("confidence") or {}).items()}
     low = [k for k, v in confidence.items() if v < CONF_THRESHOLD]
@@ -159,7 +164,7 @@ def build_record(inv: dict, created_by: str) -> MasterDispatch:
         hsn=_s(it.get("hsn")), quantity=_f(it.get("quantity")), unit=_s(it.get("unit")),
         rate=_f(it.get("rate")), amount=_f(it.get("amount")),
     ) for it in (inv.get("items") or [])]
-    return MasterDispatch(
+    record = MasterDispatch(
         **{k: _s(inv.get(k)) for k in HEADER_TEXT},
         **{k: _f(inv.get(k)) for k in HEADER_NUM},
         boxes=_i(inv.get("boxes")),
@@ -171,6 +176,8 @@ def build_record(inv: dict, created_by: str) -> MasterDispatch:
         low_confidence_fields=low,
         created_by=created_by,
     )
+    record.eway_bill_number = normalize_eway(record.eway_bill_number)
+    return record
 
 
 async def _log(batch_id: str, level: str, message: str):
