@@ -15,7 +15,7 @@ from pdi_models import (PdiTemplate, PdiTemplateCreate, PdiTemplateUpdate, PdiDr
                         PdiGenerateInput, PdiReport)
 from pdi_extract import (import_master_pdf, run_state, MASTER_PDF, UPLOAD_DIR,
                          process_upload, extract_template_pdf, save_template_revision)
-from pdi_generate import generate_observations, render_report_pdf, REPORT_DIR
+from pdi_generate import generate_observations, render_report_pdf, REPORT_DIR, resolve_source_pdf
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/pdi", tags=["pdi"])
@@ -242,6 +242,7 @@ async def template_source(template_id: str, revision: int = 0, user: dict = Depe
         snap = await db.pdi_template_revisions.find_one({"template_id": template_id, "revision": revision})
         if snap:
             path = snap.get("source_pdf", path)
+    path = resolve_source_pdf(path)
     if not path or not Path(path).exists():
         raise HTTPException(status_code=404, detail="Source PDF not found")
     return FileResponse(path, media_type="application/pdf",
@@ -252,7 +253,7 @@ async def template_source(template_id: str, revision: int = 0, user: dict = Depe
 @router.post("/templates/{template_id}/preview")
 async def template_sample_preview(template_id: str, user: dict = Depends(get_current_user)):
     doc = await _template_or_404(template_id)
-    if not Path(doc.get("source_pdf", "")).exists():
+    if not Path(resolve_source_pdf(doc.get("source_pdf", ""))).exists():
         raise HTTPException(status_code=404, detail="Template source PDF missing")
     return _sample_pdf(doc)
 
@@ -457,7 +458,7 @@ async def generate_report(payload: PdiGenerateInput, user: dict = Depends(get_cu
         raise HTTPException(status_code=404, detail="No matching PDI template found. Select a template manually from the library.")
     if not template.get("rows"):
         raise HTTPException(status_code=400, detail="Template has no dimension rows. Edit the template first.")
-    if not Path(template.get("source_pdf", "")).exists():
+    if not Path(resolve_source_pdf(template.get("source_pdf", ""))).exists():
         raise HTTPException(status_code=404, detail="Template source page PDF missing. Re-import or replace the template PDF.")
 
     dispatch = None
@@ -526,7 +527,7 @@ async def _template_at_revision(template_id: str, revision: int) -> dict:
 async def regenerate_report(report_id: str, user: dict = Depends(get_current_user)):
     doc = await _report_or_404(report_id)
     template = await _template_at_revision(doc["template_id"], doc.get("template_revision", 1))
-    if not template.get("rows") or not Path(template.get("source_pdf", "")).exists():
+    if not template.get("rows") or not Path(resolve_source_pdf(template.get("source_pdf", ""))).exists():
         raise HTTPException(status_code=404, detail="Original template revision unavailable — cannot regenerate")
     observations = generate_observations(template["rows"], n_obs=doc.get("sample_count", 10))
     pdf_path = doc.get("pdf_path") or str(REPORT_DIR / f"{uuid.uuid4().hex}.pdf")

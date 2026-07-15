@@ -8,6 +8,18 @@ REPORT_DIR = Path(__file__).parent / "uploads" / "pdi_reports"
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 FONTS = ["Kalam-Regular.ttf", "PatrickHand-Regular.ttf", "Caveat-Regular.ttf"]
+UPLOAD_ROOT = Path(__file__).parent / "uploads"
+
+
+def resolve_source_pdf(path: str) -> str:
+    """Re-anchor stored PDF paths to this install's uploads dir (portable across servers)."""
+    if path and Path(path).exists():
+        return path
+    if path and "uploads/" in path:
+        cand = UPLOAD_ROOT / path.split("uploads/", 1)[1]
+        if cand.exists():
+            return str(cand)
+    return path or ""
 BASE_INK = (31 / 255, 79 / 255, 163 / 255)
 
 
@@ -139,7 +151,7 @@ def render_report_pdf(template: dict, report: dict, observations: list[list[str]
     """Overlay handwritten-style entries onto the original template page(s)."""
     rng = random.Random(seed)
     style = daily_style(report.get("report_date", ""))
-    doc = fitz.open(template["source_pdf"])
+    doc = fitz.open(resolve_source_pdf(template["source_pdf"]))
     layouts = template.get("layouts") or ([template["layout"]] if template.get("layout") else [{}])
     rows = template.get("rows") or []
 

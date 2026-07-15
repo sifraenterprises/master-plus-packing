@@ -36,7 +36,7 @@ def test_import_status(admin_h):
     r = requests.get(f"{API}/pdi/import-status", headers=admin_h, timeout=15)
     assert r.status_code == 200
     j = r.json()
-    assert j.get("templates_in_library") == 120, f"expected 120 got {j}"
+    assert j.get("templates_in_library", 0) >= 120, f"expected >=120 got {j}"
     assert j.get("running") in (False, None)
 
 
@@ -106,13 +106,17 @@ def test_masters_inspectors_and_approvers(admin_h, dispatch_h):
     assert r3.status_code == 200
     r4 = requests.get(f"{API}/pdi/masters/inspectors", headers=admin_h, timeout=15)
     assert "TEST_INSP1" in r4.json()
-    r5 = requests.delete(f"{API}/pdi/masters/inspectors/TEST_INSP1", headers=admin_h, timeout=15)
-    assert r5.status_code == 200
+    r5 = requests.get(f"{API}/pdi/masters/inspectors/manage", headers=admin_h, timeout=15)
+    insp_id = next(d["id"] for d in r5.json() if d["name"] == "TEST_INSP1")
+    r5d = requests.delete(f"{API}/pdi/masters/inspectors/{insp_id}", headers=admin_h, timeout=15)
+    assert r5d.status_code == 200
 
     r6 = requests.post(f"{API}/pdi/masters/approvers", json={"name": "TEST_APR1"}, headers=admin_h, timeout=15)
     assert r6.status_code == 200
-    r7 = requests.delete(f"{API}/pdi/masters/approvers/TEST_APR1", headers=admin_h, timeout=15)
-    assert r7.status_code == 200
+    r7 = requests.get(f"{API}/pdi/masters/approvers/manage", headers=admin_h, timeout=15)
+    apr_id = next(d["id"] for d in r7.json() if d["name"] == "TEST_APR1")
+    r7d = requests.delete(f"{API}/pdi/masters/approvers/{apr_id}", headers=admin_h, timeout=15)
+    assert r7d.status_code == 200
 
 
 @pytest.fixture(scope="module")

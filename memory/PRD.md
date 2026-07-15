@@ -208,3 +208,11 @@ See /app/memory/test_credentials.md (admin/5@Sohangso, dispatch/5@Grewal)
 - P0: none outstanding
 - P1: PDI Phase 2 — digital/scanned signatures linked to Inspector/Approver master records; review 7 templates having dimension rows without nominal + 2 missing item_code (fix via Template Editor); PATCH semantics for partial updates; factory images/certificates upload (needs object storage); split automation.py into automation/ package; VPS go-live checklist (playwright install, TAFE IP whitelist)
 - P2: daily "morning summary" Telegram alert (dispatches/boxes/pending ASNs); "Generate PDI" shortcut on Dispatch List rows; barcode/QR generation, email/WhatsApp/SMS notifications, SAP/ERP integrations, per-user password change UI, dashboard charts (recharts)
+
+## Implemented — Iteration 26 (June 2026): VPS redeployment readiness + 3 blocker fixes
+- Deployment audit vs previously deployed (pre-PDI) version; full checklist written to deploy/DEPLOYMENT_CHECKLIST.md (files changed/added/removed, DB changes, packages, manual steps, exact VPS commands, rollback, risk assessment)
+- BLOCKER FIX 1: requirements.txt had been overwritten by pip freeze containing non-PyPI internal packages (emergentintegrations, litellm internal wheel) → restored curated production list + pymupdf==1.28.0
+- BLOCKER FIX 2: pdi_template_revisions stored absolute /app/... source_pdf paths → added resolve_source_pdf() in pdi_generate.py, used at all read points (render, preview, source download, generate, regenerate). Portable to any install dir. Verified with fake-root path test.
+- BLOCKER FIX 3: PDI library (121 templates/128 revisions/inspectors/approvers) existed only in this env's MongoDB → created deploy/seed/pdi_seed.gz (57KB mongodump, pdi_* masters only) + deploy/seed_pdi.sh one-time import (scoped --drop, never touches dispatch/user data). Cleaned test artifacts (TEST_INSP1, UI Test Inspector 2) before dump.
+- Updated stale tests (121 templates >=120; id-based master delete). Verified: test_pdi.py + test_pdi_extended.py 27/27 passed, iteration_17 smoke 16/16 passed, /health OK.
+- update.sh verdict: compatible IF venv at backend/venv + systemd grewal-api + nginx + git clone exist; manual command path provided otherwise. No new env vars, no npm packages, no nginx/systemd changes needed.
