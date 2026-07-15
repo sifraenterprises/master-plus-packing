@@ -135,7 +135,7 @@ export default function Reports() {
         <p className="text-xs uppercase tracking-[0.3em] text-primary mb-2">ERP Analytics</p>
         <h1 className="text-3xl font-black tracking-tight">Reports</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Live workflow reporting across Master Dispatch, Packing, ASN, E-Way Bill, Vendor Acknowledgement and DQMS.
+          Live workflow reporting across Master Dispatch, Packing, ASN, E-Way Bill, Vendor Acknowledgement and PDI.
         </p>
       </div>
 

@@ -7,11 +7,11 @@ const CARDS = [
   { key: "pending_asn", label: "Pending ASN", filter: () => ({ asn_status: "Pending" }), tone: "amber" },
   { key: "pending_eway", label: "Pending E-Way Bills", filter: () => ({ eway_status: "Pending" }), tone: "amber" },
   { key: "pending_vendor_ack", label: "Pending Vendor Ack", filter: () => ({ vendor_ack_status: "Pending" }), tone: "amber" },
-  { key: "pending_dqms", label: "Pending DQMS", filter: () => ({ dqms_status: "Pending" }), tone: "amber" },
+  { key: "pending_pdi", label: "Pending PDI", filter: () => ({ pdi_status: "Pending" }), tone: "amber" },
   { key: "completed_asn", label: "Completed ASN", filter: () => ({ asn_status: "Completed" }), tone: "green" },
   { key: "completed_eway", label: "Completed E-Way Bills", filter: () => ({ eway_status: "Completed" }), tone: "green" },
   { key: "completed_vendor_ack", label: "Completed Vendor Ack", filter: () => ({ vendor_ack_status: "Completed" }), tone: "green" },
-  { key: "completed_dqms", label: "Completed DQMS", filter: () => ({ dqms_status: "Completed" }), tone: "green" },
+  { key: "completed_pdi", label: "Completed PDI", filter: () => ({ pdi_status: "Completed" }), tone: "green" },
 ];
 
 const TONE = { amber: "text-amber-400", green: "text-emerald-400" };

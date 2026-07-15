@@ -102,9 +102,7 @@ async def get_template(template_id: str, user: dict = Depends(get_current_user))
 @router.put("/templates/{template_id}")
 async def update_template(template_id: str, payload: PdiTemplateUpdate, user: dict = Depends(require_admin)):
     doc = await _template_or_404(template_id)
-    updates = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
-    if "rows" in updates:
-        updates["rows"] = [r if isinstance(r, dict) else r for r in updates["rows"]]
+    updates = payload.model_dump(exclude_none=True)
     updates["updated_at"] = utcnow().isoformat()
     from bson import ObjectId
     await db.pdi_master_library.update_one({"_id": ObjectId(template_id)}, {"$set": updates})

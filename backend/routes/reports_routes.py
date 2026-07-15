@@ -12,7 +12,7 @@ from auth import get_current_user, log_activity
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
-STATUS_KEYS = ("packing_status", "asn_status", "eway_status", "vendor_ack_status", "dqms_status")
+STATUS_KEYS = ("packing_status", "asn_status", "eway_status", "vendor_ack_status", "pdi_status")
 STATUS_VALUES = ("Completed", "Pending", "Failed")
 SORT_FIELDS = {"invoice_number", "invoice_date", "customer_name", "plant", "quantity", "dispatch_date",
                "transporter_name", "created_at", *STATUS_KEYS}
@@ -21,7 +21,7 @@ ERP_COLUMNS = [
     ("invoice_number", "Invoice Number"), ("invoice_date", "Invoice Date"), ("customer_name", "Customer"),
     ("plant", "Plant"), ("part_numbers", "Part Number"), ("quantity", "Quantity"),
     ("packing_status", "Packing Slip"), ("asn_status", "ASN"), ("eway_status", "E-Way Bill"),
-    ("vendor_ack_status", "Vendor Ack"), ("dqms_status", "DQMS"), ("dispatch_date", "Dispatch Date"),
+    ("vendor_ack_status", "Vendor Ack"), ("pdi_status", "PDI"), ("dispatch_date", "Dispatch Date"),
     ("transporter_name", "Transporter"), ("vehicle_number", "Vehicle"), ("po_number", "PO Number"),
     ("asn_no", "ASN Number"), ("eway_bill_number", "E-Way Bill No"), ("packing_slip_no", "Packing Slip No"),
     ("boxes", "Boxes"),
@@ -88,6 +88,9 @@ def build_erp_pipeline(p: dict):
                      "pipeline": [{"$match": {"$expr": {"$eq": ["$dispatch_id", "$$mid"]}}},
                                   {"$project": {"status": 1, "ack_date": 1, "ack_time": 1,
                                                 "portal_message": 1, "updated_at": 1}}], "as": "_va"}},
+        {"$lookup": {"from": "pdi_reports", "let": {"mid": {"$toString": "$_id"}},
+                     "pipeline": [{"$match": {"$expr": {"$eq": ["$master_dispatch_id", "$$mid"]}}},
+                                  {"$project": {"report_no": 1, "created_at": 1}}], "as": "_pdi"}},
         {"$addFields": {
             "packing_status": {"$cond": [{"$gt": [{"$size": "$_pk"}, 0]}, "Completed", "Pending"]},
             "packing_slip_no": {"$ifNull": [{"$first": "$_pk.lot_number"}, ""]},
@@ -107,7 +110,8 @@ def build_erp_pipeline(p: dict):
                 {"case": {"$eq": [{"$first": "$_va.status"}, "Failed"]}, "then": "Failed"},
                 {"case": {"$eq": [{"$ifNull": ["$vendor_ack_status", ""]}, "Completed"]}, "then": "Completed"},
             ], "default": "Pending"}},
-            "dqms_status": "Pending",
+            "pdi_status": {"$cond": [{"$gt": [{"$size": "$_pdi"}, 0]}, "Completed", "Pending"]},
+            "pdi_report_no": {"$ifNull": [{"$first": "$_pdi.report_no"}, ""]},
             "quantity": {"$sum": "$items.quantity"},
             "part_numbers": {"$reduce": {"input": {"$ifNull": ["$items.part_number", []]}, "initialValue": "",
                                          "in": {"$cond": [{"$eq": ["$$value", ""]}, "$$this",
@@ -124,7 +128,7 @@ def build_erp_pipeline(p: dict):
         post["packing_slip_no"] = _rx(p["packing_slip"])
     if post:
         stages.append({"$match": post})
-    stages.append({"$project": {"_pk": 0, "_asn": 0, "_ew": 0, "_va": 0, "confidence": 0,
+    stages.append({"$project": {"_pk": 0, "_asn": 0, "_ew": 0, "_va": 0, "_pdi": 0, "confidence": 0,
                                 "automation_log": 0, "low_confidence_fields": 0, "items": 0}})
     return stages
 
@@ -132,7 +136,7 @@ def build_erp_pipeline(p: dict):
 def erp_params(search=None, invoice=None, customer=None, vendor=None, plant=None, transporter=None,
                vehicle=None, packing_slip=None, asn=None, eway=None, po=None, part=None, description=None,
                inv_from=None, inv_to=None, dispatch_from=None, dispatch_to=None,
-               packing_status=None, asn_status=None, eway_status=None, vendor_ack_status=None, dqms_status=None):
+               packing_status=None, asn_status=None, eway_status=None, vendor_ack_status=None, pdi_status=None):
     return {k: v for k, v in locals().items() if v}
 
 
@@ -321,6 +325,7 @@ async def dispatch_workflow(md_id: str, user: dict = Depends(get_current_user)):
     asn = await db.asn_creation.find_one({"master_dispatch_id": md_id})
     ew = await db.eway_submissions.find_one({"record_id": md_id})
     va = await db.vendor_eway_acknowledgement.find_one({"dispatch_id": md_id})
+    pdi = await db.pdi_reports.find_one({"master_dispatch_id": md_id}, sort=[("created_at", -1)])
     batch_allocs = await db.asn_batch_allocations.find({"dispatch_id": md_id}).sort("created_at", -1).to_list(50)
     file_id = md.get("split_file_id") or md.get("source_file_id") or ""
     steps = [
@@ -354,8 +359,11 @@ async def dispatch_workflow(md_id: str, user: dict = Depends(get_current_user)):
          "timestamp": f"{(va or {}).get('ack_date', '')} {(va or {}).get('ack_time', '')}".strip(),
          "detail": (va or {}).get("portal_message", "") or "Awaiting acknowledgement",
          "download": ""},
-        {"key": "dqms", "label": "DQMS", "status": "Pending", "doc_no": "", "timestamp": "",
-         "detail": "DQMS module not yet live", "download": ""},
+        {"key": "pdi", "label": "PDI Report", "status": "Completed" if pdi else "Pending",
+         "doc_no": (pdi or {}).get("report_no", ""), "timestamp": (pdi or {}).get("created_at", ""),
+         "detail": f"{(pdi or {}).get('part_name', '')} · Item {(pdi or {}).get('item_code', '')}" if pdi
+         else "No PDI report generated yet",
+         "download": f"/pdi/reports/{str(pdi['_id'])}/pdf" if pdi else ""},
     ]
     return {"dispatch": {"id": md_id, "dispatch_no": md.get("dispatch_no", ""),
                          "invoice_number": md.get("invoice_number", ""), "invoice_date": md.get("invoice_date", ""),

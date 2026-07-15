@@ -566,11 +566,6 @@ class ASNAutomation(PortalAutomationBase):
         return {"asn_number": asn_no, "before_submit": shot}
 
 
-class DQMSAutomation(SimpleFormAutomation):
-    module = "dqms"
-    section = "dqms"
-
-
 async def validate_portal(attempt_login=False, headless=True, log=None, dry_run_fill=False):
     """Non-destructive live portal validation: connects, verifies selector presence,
     optionally logs in and checks navigation/form selectors. With dry_run_fill it also

@@ -18,7 +18,7 @@ const DATE_FIELDS = [
 ];
 const STATUS_FIELDS = [
   ["packing_status", "Packing Status"], ["asn_status", "ASN Status"], ["eway_status", "E-Way Bill Status"],
-  ["vendor_ack_status", "Vendor Ack Status"], ["dqms_status", "DQMS Status"],
+  ["vendor_ack_status", "Vendor Ack Status"], ["pdi_status", "PDI Status"],
 ];
 
 export const AdvancedFilters = ({ filters, setFilters, onSearch, onReset, onExport, onPrint,

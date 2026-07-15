@@ -8,7 +8,7 @@ export const EMPTY_FILTERS = {
   search: "", invoice: "", customer: "", vendor: "", plant: "", transporter: "", vehicle: "",
   packing_slip: "", asn: "", eway: "", po: "", part: "", description: "",
   inv_from: "", inv_to: "", dispatch_from: "", dispatch_to: "",
-  packing_status: "", asn_status: "", eway_status: "", vendor_ack_status: "", dqms_status: "",
+  packing_status: "", asn_status: "", eway_status: "", vendor_ack_status: "", pdi_status: "",
 };
 
 export const COLUMNS = [
@@ -22,7 +22,7 @@ export const COLUMNS = [
   { k: "asn_status", label: "ASN", w: 95, status: true },
   { k: "eway_status", label: "E-Way Bill", w: 100, status: true },
   { k: "vendor_ack_status", label: "Vendor Ack", w: 105, status: true },
-  { k: "dqms_status", label: "DQMS", w: 90, status: true },
+  { k: "pdi_status", label: "PDI", w: 90, status: true },
   { k: "dispatch_date", label: "Dispatch Date", w: 110 },
   { k: "transporter_name", label: "Transporter", w: 140, hidden: true },
   { k: "vehicle_number", label: "Vehicle", w: 110, hidden: true },

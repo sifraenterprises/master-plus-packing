@@ -155,10 +155,23 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 - Docs: DEPLOYMENT.md §7 CI/CD setup (secrets table) + §8 Alerts (BotFather/getUpdates + SMTP instructions); .env.example updated (both copies)
 - Self-tested: test endpoint graceful when unconfigured, failed ASN run triggered alert hook without crash, watchdog boots, update.sh/workflow syntax OK, UI card verified via screenshot. NOT testable here: real Telegram/SMTP delivery (needs user tokens) and actual GitHub Action runs
 
+## Implemented — Iteration 21 (July 2026): AI PDI Generator (replaces DQMS)
+- DQMS fully removed (module seed deleted, nav replaced) → new "AI PDI Generator" module at /portal/modules/pdi (active)
+- PDI Master Library: all 120 pages of user's "PDI 1.pdf" imported via Gemini OCR (0 errors) into db.pdi_master_library — per template: part_name/item_code/drg_no + rows (sr, specified_dimension, method, freq, nominal, tol_low, tol_high, value_type) + per-page geometry layout + linked original page PDF (uploads/pdi_templates/page_XXX.pdf). Re-import: POST /api/pdi/import-master (admin, background, progress via /api/pdi/import-status)
+- Template Editor (admin): edit part/item/drg + full rows grid (add/remove rows, tolerances, visual/dimension type) via PUT /api/pdi/templates/{id}; view original scanned page inline
+- Generation engine (backend/pdi_generate.py): observations statistically realistic ALWAYS within tolerance (truncated gaussian around random per-report mean, rounded to instrument least count from method e.g. Vernier 0.02/Mic 0.001, anti-repeat nudging); visual rows → "OK"; freq parsed (5/Lot → 5 obs, 100% → 10)
+- Handwriting simulation: PyMuPDF overlay on ORIGINAL template page — Kalam/PatrickHand fonts (backend/fonts/), per-char size ±7% / baseline ±0.55 / spacing jitter, whole-string rotation ±1.8°, blue ink #1f4fa3 (± jitter), hand-drawn tick marks, dynamic width bounds so values never overlap printed labels
+- Generate flow: pick Master Dispatch item → auto-match template (item_code/drg/part regex) → prefill lot size/challan/vender code → inspector & approver dropdowns (masters + last-used prefill via /api/pdi/last-used) → sequential report no (PDI-000X) → saved permanently, linked to dispatch
+- Reports history: search (invoice/part/item code/customer/lot no/report no), status + date filters, preview/download/reprint, regenerate (fresh observations), admin delete; PDFs at uploads/pdi_reports/
+- Masters: PDI Inspectors & PDI Approvers CRUD in Settings → Masters (db.pdi_inspectors / db.pdi_approvers, admin write)
+- Reports dashboard integration: dqms_status fully replaced by real pdi_status ($lookup on pdi_reports) — KPI cards Pending/Completed PDI, PDI Status filter, ERP table column pdi_status + pdi_report_no, workflow drill-down "PDI Report" step with PDF download link; DQMSAutomation class removed from automation.py
+- New files: backend/pdi_models.py, pdi_extract.py, pdi_generate.py, routes/pdi_routes.py; frontend pages/PdiModule.jsx + components/pdi/{GeneratePanel,ReportsHistory,TemplateLibrary,TemplateEditorDialog,PdfPreviewDialog}.jsx; pymupdf added to requirements
+- Testing iteration_13: backend 14/14 pytest, frontend 100% (all flows incl. generate→preview, regenerate, template edit, masters CRUD, regression on existing modules)
+
 ## Backlog
 - P0: none outstanding
-- P1: PATCH semantics for partial updates; factory images/certificates upload for company profile (needs object storage integration); "Masters" section in Settings (admin UI to add/remove Plants & Transporters); DQMS Automation module; split automation.py into automation/ package (eway.py, asn.py, vendor_ack.py); VPS go-live checklist (playwright install chromium --with-deps, Validate Portal, TAFE IP whitelist)
-- P2: barcode/QR generation, email/WhatsApp/SMS notifications, SAP/ERP integrations, per-user password change UI, dashboard charts (recharts)
+- P1: PDI Phase 2 — digital/scanned signatures for Inspectors/Approvers; review 7 templates having dimension rows without nominal + 2 missing item_code (fix via Template Editor); PATCH semantics for partial updates; factory images/certificates upload (needs object storage); split automation.py into automation/ package; VPS go-live checklist (playwright install, TAFE IP whitelist)
+- P2: daily "morning summary" Telegram alert (dispatches/boxes/pending ASNs); barcode/QR generation, email/WhatsApp/SMS notifications, SAP/ERP integrations, per-user password change UI, dashboard charts (recharts)
 
 ## Test Credentials
 See /app/memory/test_credentials.md (admin/5@Sohangso, dispatch/5@Grewal)
