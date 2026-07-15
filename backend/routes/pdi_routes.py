@@ -116,7 +116,7 @@ async def preview_draft(payload: PdiDraftPreview, user: dict = Depends(require_a
 def _sample_pdf(template: dict) -> Response:
     observations = generate_observations(template.get("rows") or [])
     sample = {"report_no": "PDI-SAMPLE", "report_date": utcnow().strftime("%d.%m.%Y"),
-              "lot_size": "500", "lot_no": "LOT-01", "challan_no_dt": "INV-001 / " + utcnow().strftime("%d.%m.%y"),
+              "lot_size": "500", "lot_no": "LOT-01", "challan_no_dt": "INV-001",
               "min_no_dt": "", "vender_code": "302235", "inspector": "Sample Inspector",
               "approver": "Sample Approver", "parameters_note": "All dimensions as per drawing",
               "identification_mark": "Sticker on box"}

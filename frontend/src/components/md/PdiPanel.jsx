@@ -66,7 +66,7 @@ export default function PdiPanel({ record, onClose, onChanged }) {
         template_id: template.id, master_dispatch_id: record.id,
         part_name: item?.description || "", item_code: item?.part_number || "",
         report_date: fmtDate(record.invoice_date), lot_size: String(totalQty || ""),
-        lot_no: lotNo, challan_no_dt: `${record.invoice_number} / ${fmtDate(record.invoice_date)}`,
+        lot_no: lotNo, challan_no_dt: record.invoice_number || "",
         vender_code: record.customer_code || "", inspector, approver,
         sample_count: Number(sampleCount) || 10,
       });

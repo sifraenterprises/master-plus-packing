@@ -78,7 +78,7 @@ export default function GeneratePanel() {
       report_date: invDate || f.report_date,
       lot_size: d.total_quantity ? String(d.total_quantity) : f.lot_size,
       lot_no: dLots.length === 1 ? dLots[0] : dLots.includes(f.lot_no) ? f.lot_no : "",
-      challan_no_dt: d.invoice_number ? `${d.invoice_number} / ${invDate}`.trim() : f.challan_no_dt,
+      challan_no_dt: d.invoice_number || f.challan_no_dt,
       vender_code: d.customer_code || f.vender_code,
     }));
     if (dLots.length > 1) toast.info(`${dLots.length} lot numbers found for this invoice — select the correct one.`);
