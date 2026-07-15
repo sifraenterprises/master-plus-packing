@@ -182,6 +182,15 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 ## Test Credentials
 See /app/memory/test_credentials.md (admin/5@Sohangso, dispatch/5@Grewal)
 
+## Implemented — Iteration 23 (July 2026): PDI × ASN integration + document management
+- Master Dispatch = single source of truth: PDI generation auto-attaches to the dispatch (pdi_report_no/id, generated_at, template_revision, inspector, approver, upload status + generic documents[] array); regenerate refreshes the entry; report delete detaches; duplicate strips PDI/documents/asn_number
+- Data-driven document types (db.document_types, seeded: PDI required-for-ASN + MTC/Heat Treatment/Plating/Calibration/PPAP/Customer-Inspection inactive): GET/POST/PUT /api/documents/types; Settings → Masters has "Dispatch Document Types" panel (add type, Required-for-ASN + Active switches) — new doc types need zero code changes
+- ASN automation integration: _resolve_documents() runs before every ASN run — auto-attaches the latest PDI from the dispatch to the ASN record, blocks dispatches missing required documents (marked Failed with clear message, skipped list toasted in UI, 400 if all blocked); ASN import also picks up attached PDI; portal PDI upload retries once and fails with explicit reason; on ASN success the dispatch documents entry gets "Uploaded to Portal" + timestamp (visible in PDI panel)
+- Dispatch List: new PDI column (clickable badge: "+ PDI" / report no, green when uploaded) opening PDI panel — info grid + Preview/Download/Regenerate, or compact one-click "Generate & Attach PDI" (auto-matched template, inspector/approver dropdowns, lot select) when missing
+- PDI reports now always fill ALL 10 observation columns (user requirement)
+- MasterDispatch model exposes pdi_* + documents fields (was silently stripping them)
+- Testing: full E2E via curl in TEST mode (blocked run → generate → auto-attach → ASN Completed ASN26486721 → "Uploaded to Portal") + testing agent iteration_16 frontend 100% + self-tested "+ PDI" generate flow in browser (PDI-0014)
+
 ## Backlog
 - P0: none outstanding
 - P1: PDI Phase 2 — digital/scanned signatures linked to Inspector/Approver master records; review 7 templates having dimension rows without nominal + 2 missing item_code (fix via Template Editor); PATCH semantics for partial updates; factory images/certificates upload (needs object storage); split automation.py into automation/ package; VPS go-live checklist (playwright install, TAFE IP whitelist)
