@@ -392,6 +392,52 @@ async def dispatch_options(q: str = "", user: dict = Depends(get_current_user)):
     return out
 
 
+# ---------- Master Dispatch document attachment (single source of truth) ----------
+
+async def _attach_pdi_to_dispatch(dispatch_id: str, report: dict):
+    if not dispatch_id or not ObjectId.is_valid(dispatch_id):
+        return
+    oid = ObjectId(dispatch_id)
+    now = utcnow().isoformat()
+    entry = {"type": "PDI", "ref_id": str(report.get("id") or report.get("_id")),
+             "report_no": report.get("report_no", ""), "file_path": report.get("pdf_path", ""),
+             "generated_at": now, "revision": report.get("template_revision", 1),
+             "inspector": report.get("inspector", ""), "approver": report.get("approver", ""),
+             "upload_status": "Pending Upload", "last_upload_at": ""}
+    await db.master_dispatch.update_one({"_id": oid}, {"$pull": {"documents": {"type": "PDI"}}})
+    await db.master_dispatch.update_one({"_id": oid}, {
+        "$push": {"documents": entry},
+        "$set": {"pdi_report_id": entry["ref_id"], "pdi_report_no": entry["report_no"],
+                 "pdi_generated_at": now, "pdi_template_revision": entry["revision"],
+                 "pdi_inspector": entry["inspector"], "pdi_approver": entry["approver"],
+                 "pdi_upload_status": "Pending Upload", "pdi_last_upload_at": "",
+                 "updated_at": now}})
+    asn = await db.asn_creation.find_one({"master_dispatch_id": dispatch_id})
+    if asn:
+        from routes.asn_routes import compute_status
+        update = {"pdi_file_path": report.get("pdf_path", ""),
+                  "pdi_file_name": f"{entry['report_no']}.pdf", "updated_at": now}
+        if asn.get("status") in ("Draft", "Ready"):
+            update["status"] = compute_status({**asn, **update})
+        await db.asn_creation.update_one({"_id": asn["_id"]}, {"$set": update})
+
+
+async def _detach_pdi_from_dispatch(dispatch_id: str, report: dict):
+    if not dispatch_id or not ObjectId.is_valid(dispatch_id):
+        return
+    oid = ObjectId(dispatch_id)
+    now = utcnow().isoformat()
+    await db.master_dispatch.update_one({"_id": oid}, {
+        "$pull": {"documents": {"type": "PDI", "ref_id": str(report["_id"])}},
+        "$unset": {"pdi_report_id": "", "pdi_report_no": "", "pdi_generated_at": "",
+                   "pdi_template_revision": "", "pdi_inspector": "", "pdi_approver": "",
+                   "pdi_upload_status": "", "pdi_last_upload_at": ""},
+        "$set": {"updated_at": now}})
+    await db.asn_creation.update_one(
+        {"master_dispatch_id": dispatch_id, "pdi_file_path": report.get("pdf_path", "")},
+        {"$set": {"pdi_file_path": "", "pdi_file_name": "", "updated_at": now}})
+
+
 # ---------- Generate ----------
 
 async def _next_report_no() -> str:
@@ -453,6 +499,7 @@ async def generate_report(payload: PdiGenerateInput, user: dict = Depends(get_cu
                        f"{report_no} · {report.part_name} · rev {report.template_revision}", "pdi")
     data = report.model_dump()
     data["id"] = str(result.inserted_id)
+    await _attach_pdi_to_dispatch(payload.master_dispatch_id, {**data})
     data.pop("pdf_path", None)
     return data
 
@@ -489,6 +536,13 @@ async def regenerate_report(report_id: str, user: dict = Depends(get_current_use
     await db.pdi_reports.update_one({"_id": doc["_id"]}, {"$set": {
         "observations": observations, "pdf_path": pdf_path, "status": "regenerated",
         "updated_at": utcnow().isoformat()}, "$inc": {"regenerated_count": 1}})
+    if doc.get("master_dispatch_id"):
+        md = await db.master_dispatch.find_one(
+            {"_id": ObjectId(doc["master_dispatch_id"])}, {"pdi_report_id": 1}
+        ) if ObjectId.is_valid(doc.get("master_dispatch_id", "")) else None
+        if md and md.get("pdi_report_id") == str(doc["_id"]):
+            await _attach_pdi_to_dispatch(doc["master_dispatch_id"],
+                                          {**doc, "id": str(doc["_id"]), "pdf_path": pdf_path})
     await log_activity(user["username"], "pdi_regenerated", doc.get("report_no", ""), "pdi")
     return {"status": "regenerated", "report_no": doc.get("report_no", "")}
 
@@ -543,6 +597,7 @@ async def delete_report(report_id: str, user: dict = Depends(require_admin)):
     path = doc.get("pdf_path", "")
     if path and Path(path).exists():
         Path(path).unlink()
+    await _detach_pdi_from_dispatch(doc.get("master_dispatch_id", ""), doc)
     await db.pdi_reports.delete_one({"_id": doc["_id"]})
     await log_activity(user["username"], "pdi_deleted", doc.get("report_no", ""), "pdi")
     return {"deleted": doc.get("report_no", "")}

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import api, { apiError } from "@/lib/api";
 import { PeopleMasterList } from "./PeopleMasterList";
+import { DocumentTypesPanel } from "./DocumentTypesPanel";
 
 const MasterList = ({ title, icon: Icon, endpoint, testKey }) => {
   const [items, setItems] = useState([]);
@@ -75,5 +76,6 @@ export const MastersPanel = () => (
       <PeopleMasterList title="PDI Inspectors" icon={UserCircle} kind="inspectors" />
       <PeopleMasterList title="PDI Approvers" icon={SealCheck} kind="approvers" />
     </div>
+    <DocumentTypesPanel />
   </div>
 );

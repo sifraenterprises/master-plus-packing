@@ -25,11 +25,12 @@ const SORTABLE = [
   { key: null, label: "Items" },
   { key: "invoice_total", label: "Total (₹)" },
   { key: "status", label: "Status" },
+  { key: null, label: "PDI" },
   { key: null, label: "Review" },
   { key: null, label: "Actions" },
 ];
 
-export default function MDRecordsTable({ records, sort, onSort, isAdmin, onView, onEdit, onDuplicate, onDelete }) {
+export default function MDRecordsTable({ records, sort, onSort, isAdmin, onView, onEdit, onDuplicate, onDelete, onPdi }) {
   return (
     <div className="border border-border rounded-sm overflow-x-auto bg-card">
       <Table data-testid="md-records-table">
@@ -53,7 +54,7 @@ export default function MDRecordsTable({ records, sort, onSort, isAdmin, onView,
         <TableBody>
           {records.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={10} className="text-center text-muted-foreground py-10" data-testid="md-no-records">
+              <TableCell colSpan={11} className="text-center text-muted-foreground py-10" data-testid="md-no-records">
                 No master dispatch records found.
               </TableCell>
             </TableRow>
@@ -71,6 +72,18 @@ export default function MDRecordsTable({ records, sort, onSort, isAdmin, onView,
                   <Badge variant="outline" className={`rounded-sm text-[9px] uppercase tracking-wider whitespace-nowrap ${STATUS_STYLES[r.status] || ""}`}>
                     {STATUS_LABELS[r.status] || r.status}
                   </Badge>
+                </TableCell>
+                <TableCell>
+                  <button onClick={() => onPdi?.(r)} data-testid={`md-pdi-${r.dispatch_no}`} aria-label="PDI panel" className="cursor-pointer">
+                    <Badge variant="outline" className={`rounded-sm text-[9px] uppercase whitespace-nowrap transition-colors ${
+                      r.pdi_report_no
+                        ? (r.pdi_upload_status === "Uploaded to Portal"
+                            ? "border-emerald-500/50 text-emerald-400 hover:border-emerald-400"
+                            : "border-sky-500/50 text-sky-400 hover:border-sky-400")
+                        : "border-border text-muted-foreground hover:border-primary/50 hover:text-primary"}`}>
+                      {r.pdi_report_no || "+ PDI"}
+                    </Badge>
+                  </button>
                 </TableCell>
                 <TableCell>
                   {r.verified ? (

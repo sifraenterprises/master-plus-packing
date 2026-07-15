@@ -569,6 +569,10 @@ async def duplicate_md(record_id: str, user: dict = Depends(get_current_user)):
     doc.pop("_id", None)
     doc["dispatch_no"] = await next_md_no()
     doc["status"] = "pending"
+    for k in ("pdi_report_id", "pdi_report_no", "pdi_generated_at", "pdi_template_revision",
+              "pdi_inspector", "pdi_approver", "pdi_upload_status", "pdi_last_upload_at",
+              "documents", "asn_number"):
+        doc.pop(k, None)
     doc["created_by"] = user["username"]
     doc["created_at"] = utcnow().isoformat()
     doc["updated_at"] = utcnow().isoformat()

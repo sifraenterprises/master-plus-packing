@@ -25,6 +25,7 @@ from routes.vendor_ack_routes import router as vendor_ack_router
 from routes.asn_routes import router as asn_router
 from routes.system_routes import router as system_router
 from routes.pdi_routes import router as pdi_router
+from routes.documents_routes import router as documents_router, seed_document_types
 
 REQUIRED_ENV = ["MONGO_URL", "DB_NAME", "JWT_SECRET", "ADMIN_USERNAME", "ADMIN_PASSWORD",
                 "DISPATCH_USERNAME", "DISPATCH_PASSWORD"]
@@ -99,6 +100,7 @@ api_router.include_router(vendor_ack_router)
 api_router.include_router(asn_router)
 api_router.include_router(system_router)
 api_router.include_router(pdi_router)
+api_router.include_router(documents_router)
 api_router.include_router(public_router)
 app.include_router(api_router)
 
@@ -175,6 +177,7 @@ async def startup():
     await db.pdi_approvers.create_index("name", unique=True)
     await db.pdi_uploads.create_index("upload_id", unique=True)
     await db.pdi_template_revisions.create_index([("template_id", 1), ("revision", -1)])
+    await seed_document_types()
     await seed_user("ADMIN_USERNAME", "ADMIN_PASSWORD", "Administrator", "admin")
     await seed_user("DISPATCH_USERNAME", "DISPATCH_PASSWORD", "Dispatch Operator", "dispatch")
     await seed_modules()

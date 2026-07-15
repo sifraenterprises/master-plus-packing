@@ -462,7 +462,7 @@ class ASNAutomation(PortalAutomationBase):
         if float(data.get("total_amount") or 0) <= 0:
             missing.append("total_amount")
         if not data.get("pdi_path") or not os.path.exists(str(data.get("pdi_path") or "")):
-            missing.append("PDI file (upload it on the ASN record)")
+            missing.append("PDI document (generate it in the AI PDI Generator - it auto-attaches to the dispatch)")
         if missing:
             raise AsnValidationError("Validation failed - missing: " + ", ".join(missing))
 
@@ -543,10 +543,18 @@ class ASNAutomation(PortalAutomationBase):
         await self.log("Invoice Filled", f"Invoice {data['invoice_no']} details entered")
         await self.select_by_label(s["transporter"], data["transporter"])
         await self.log("Transporter Selected", data["transporter"])
-        await self.page.locator(s["pdi_file_input"]).first.set_input_files(data["pdi_path"])
-        await self.page.locator(s["attach_button"]).first.click()
-        await self.page.wait_for_selector(s["attach_success"], state="visible", timeout=60000)
-        await self.log("PDF Attached", f"PDI attached: {os.path.basename(data['pdi_path'])}")
+        for attempt in (1, 2):
+            try:
+                await self.page.locator(s["pdi_file_input"]).first.set_input_files(data["pdi_path"])
+                await self.page.locator(s["attach_button"]).first.click()
+                await self.page.wait_for_selector(s["attach_success"], state="visible", timeout=60000)
+                break
+            except Exception as e:
+                if attempt == 1:
+                    await self.log("PDF Attach Retry", f"PDI upload not accepted ({str(e)[:100]}) - retrying once", level="WARN")
+                    continue
+                raise AutomationError(f"PDI upload to portal failed after retry: {str(e)[:150]}")
+        await self.log("PDF Attached", f"PDI attached & accepted by portal: {os.path.basename(data['pdi_path'])}")
         shot = await self.capture_screenshot(f"asn_before_{data['invoice_no'].replace('/', '-')}")
         await self.page.locator(s["create_asn_button"]).first.click()
         try:

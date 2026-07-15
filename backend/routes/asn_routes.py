@@ -221,6 +221,13 @@ async def process_queue(ids: list[str], run_id: str, user: str):
                         {"_id": ObjectId(doc["master_dispatch_id"])},
                         {"$set": {"asn_number": asn_number, "status": "ready_for_eway", "updated_at": now_iso()}},
                     )
+                    await db.master_dispatch.update_one(
+                        {"_id": ObjectId(doc["master_dispatch_id"]), "documents.type": "PDI"},
+                        {"$set": {"documents.$.upload_status": "Uploaded to Portal",
+                                  "documents.$.last_upload_at": now_iso(),
+                                  "pdi_upload_status": "Uploaded to Portal",
+                                  "pdi_last_upload_at": now_iso()}},
+                    )
                     await log("ASN Number Captured", f"{asn_number} linked to Master Dispatch - available to E-Way Bill & Vendor Ack modules", level="SUCCESS")
             await db.asn_creation.update_one({"_id": oid}, {"$set": update})
             if status == "Failed":
@@ -252,6 +259,8 @@ async def import_from_md(user: dict = Depends(get_current_user)):
         mid = str(md["_id"])
         if mid in existing_ids:
             continue
+        pdi_doc = next((d for d in (md.get("documents") or []) if d.get("type") == "PDI"), None)
+        pdi_path = pdi_doc.get("file_path", "") if pdi_doc else ""
         doc = {
             "master_dispatch_id": mid, "dispatch_no": md.get("dispatch_no", ""),
             "invoice_no": md.get("invoice_number", ""), "invoice_date": md.get("invoice_date", ""),
@@ -264,7 +273,9 @@ async def import_from_md(user: dict = Depends(get_current_user)):
             "no_of_cases": int(md.get("boxes") or 0),
             "items": [{"part_number": i.get("part_number", ""), "description": i.get("description", ""),
                        "quantity": i.get("quantity", 0)} for i in (md.get("items") or []) if i.get("part_number")],
-            "pdi_file_path": "", "asn_number": "", "error_message": "",
+            "pdi_file_path": pdi_path if pdi_path and os.path.exists(pdi_path) else "",
+            "pdi_file_name": f"{pdi_doc.get('report_no', '')}.pdf" if pdi_doc and pdi_path and os.path.exists(pdi_path) else "",
+            "asn_number": "", "error_message": "",
             "automation_log": [], "screenshots": {},
             "created_at": now_iso(), "updated_at": now_iso(), "created_by": user["username"],
         }
@@ -354,22 +365,64 @@ async def asn_stats(user: dict = Depends(get_current_user)):
 
 # ---------- Runs (queue: one ASN at a time) ----------
 
-def _start(background_tasks: BackgroundTasks, ids: list[str], user: str):
+async def _resolve_documents(ids: list[str]):
+    """Auto-attach required documents from Master Dispatch and split runnable vs blocked ids."""
+    required = await db.document_types.find({"required_for_asn": True, "active": True}).to_list(50)
+    runnable, blocked = [], []
+    for rid in ids:
+        doc = await db.asn_creation.find_one({"_id": ObjectId(rid)})
+        if not doc:
+            continue
+        md = None
+        if ObjectId.is_valid(doc.get("master_dispatch_id", "")):
+            md = await db.master_dispatch.find_one({"_id": ObjectId(doc["master_dispatch_id"])},
+                                                   {"documents": 1})
+        docs_map = {d.get("type"): d for d in (md or {}).get("documents") or []}
+        pdi_doc = docs_map.get("PDI")
+        if pdi_doc and pdi_doc.get("file_path") and os.path.exists(pdi_doc["file_path"]) \
+                and doc.get("pdi_file_path") != pdi_doc["file_path"]:
+            await db.asn_creation.update_one({"_id": doc["_id"]}, {"$set": {
+                "pdi_file_path": pdi_doc["file_path"],
+                "pdi_file_name": f"{pdi_doc.get('report_no', 'PDI')}.pdf", "updated_at": now_iso()}})
+            doc["pdi_file_path"] = pdi_doc["file_path"]
+        missing = []
+        for t in required:
+            entry = docs_map.get(t["key"])
+            has_file = bool(entry and entry.get("file_path") and os.path.exists(entry["file_path"]))
+            if t["key"] == "PDI" and not has_file:
+                has_file = bool(doc.get("pdi_file_path") and os.path.exists(doc["pdi_file_path"]))
+            if not has_file:
+                missing.append(t["label"])
+        if missing:
+            msg = f"Required document(s) missing: {', '.join(missing)}. Generate the PDI in the AI PDI Generator — it attaches to the dispatch automatically."
+            await db.asn_creation.update_one({"_id": doc["_id"]}, {"$set": {
+                "status": "Failed", "error_message": msg, "updated_at": now_iso()}})
+            blocked.append({"invoice_no": doc.get("invoice_no", ""), "missing": missing})
+        else:
+            runnable.append(rid)
+    return runnable, blocked
+
+
+async def _start(background_tasks: BackgroundTasks, ids: list[str], user: str):
     if run_state["running"]:
         raise HTTPException(status_code=409, detail="An ASN automation run is already in progress")
     if not ids:
         raise HTTPException(status_code=400, detail="No records to process")
+    runnable, blocked = await _resolve_documents(ids)
+    if not runnable:
+        detail = "; ".join(f"{b['invoice_no']}: missing {', '.join(b['missing'])}" for b in blocked) or "No valid records"
+        raise HTTPException(status_code=400, detail=f"ASN blocked — {detail}")
     run_id = str(uuid.uuid4())
-    run_state.update({"running": True, "run_id": run_id, "total": len(ids), "processed": 0,
+    run_state.update({"running": True, "run_id": run_id, "total": len(runnable), "processed": 0,
                       "current": None, "started_at": now_iso()})
-    background_tasks.add_task(process_queue, ids, run_id, user)
-    return {"run_id": run_id, "total": len(ids)}
+    background_tasks.add_task(process_queue, runnable, run_id, user)
+    return {"run_id": run_id, "total": len(runnable), "skipped": blocked}
 
 
 @router.post("/run")
 async def asn_run(req: RunRequest, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     ids = [i for i in req.ids if ObjectId.is_valid(i)]
-    result = _start(background_tasks, ids, user["username"])
+    result = await _start(background_tasks, ids, user["username"])
     await log_activity(user["username"], "asn_run", f"{len(ids)} record(s)", "asn")
     return result
 
@@ -377,7 +430,7 @@ async def asn_run(req: RunRequest, background_tasks: BackgroundTasks, user: dict
 @router.post("/run-ready")
 async def asn_run_ready(background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     ids = [str(d["_id"]) async for d in db.asn_creation.find({"status": "Ready"}, {"_id": 1})]
-    result = _start(background_tasks, ids, user["username"])
+    result = await _start(background_tasks, ids, user["username"])
     await log_activity(user["username"], "asn_run_ready", f"{len(ids)} record(s)", "asn")
     return result
 
@@ -385,7 +438,7 @@ async def asn_run_ready(background_tasks: BackgroundTasks, user: dict = Depends(
 @router.post("/retry-failed")
 async def asn_retry_failed(background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     ids = [str(d["_id"]) async for d in db.asn_creation.find({"status": "Failed"}, {"_id": 1})]
-    result = _start(background_tasks, ids, user["username"])
+    result = await _start(background_tasks, ids, user["username"])
     await log_activity(user["username"], "asn_retry_failed", f"{len(ids)} record(s)", "asn")
     return result
 

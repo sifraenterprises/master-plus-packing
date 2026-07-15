@@ -93,6 +93,10 @@ export default function AsnModule() {
     try {
       const { data } = await api[method](url, body);
       if (msg) toast.info(typeof msg === "function" ? msg(data) : msg);
+      if (data?.skipped?.length) {
+        data.skipped.forEach((s) =>
+          toast.warning(`${s.invoice_no}: blocked — missing ${s.missing.join(", ")}. Generate the PDI first.`, { duration: 8000 }));
+      }
       return data;
     } catch (err) {
       toast.error(apiError(err));

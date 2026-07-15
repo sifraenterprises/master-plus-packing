@@ -56,6 +56,15 @@ class MasterDispatch(BaseDocument):
     created_by: str = ""
     created_at: str = Field(default_factory=lambda: utcnow().isoformat())
     updated_at: str = Field(default_factory=lambda: utcnow().isoformat())
+    pdi_report_id: str = ""
+    pdi_report_no: str = ""
+    pdi_generated_at: str = ""
+    pdi_template_revision: int = 0
+    pdi_inspector: str = ""
+    pdi_approver: str = ""
+    pdi_upload_status: str = ""
+    pdi_last_upload_at: str = ""
+    documents: list[dict] = []
 
 
 class MasterDispatchInput(BaseModel):

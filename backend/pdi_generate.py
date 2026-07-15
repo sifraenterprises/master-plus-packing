@@ -24,10 +24,7 @@ def _decimals(step: float) -> int:
 
 
 def _obs_count(freq: str) -> int:
-    m = re.match(r"\s*(\d+)", freq or "")
-    if m:
-        return max(1, min(10, int(m.group(1))))
-    return 5
+    return 10
 
 
 def generate_row_values(row: dict, rng: random.Random) -> list[str]:
