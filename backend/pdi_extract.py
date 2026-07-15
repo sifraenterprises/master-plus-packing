@@ -153,12 +153,16 @@ def page_layout(page) -> dict:
 
     anchor("parameters", _find(words, "Parameters", ymin=500, ymax=560), 20)
     anchor("id_mark", _find(words, "Location", ymin=500, ymax=575), 20)
-    note_yes = []
+    note_yes, note_no = [], []
     for nth in (1, 2):
         w = _find(words, "YES", ymin=520, ymax=600, nth=nth)
         if w:
             note_yes.append([round(w[2] + 14, 1), round((w[1] + w[3]) / 2, 1)])
+        w = _find(words, "NO", ymin=520, ymax=600, nth=nth)
+        if w:
+            note_no.append([round(w[2] + 14, 1), round((w[1] + w[3]) / 2, 1)])
     lay["note_yes"] = note_yes
+    lay["note_no"] = note_no
     return lay
 
 

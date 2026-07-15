@@ -169,8 +169,16 @@ def render_report_pdf(template: dict, report: dict, observations: list[list[str]
 
         at("parameters", report.get("parameters_note"), 9.5, max_w=330)
         at("id_mark", report.get("identification_mark"), 9.5, max_w=300)
-        for a in lay.get("note_yes") or []:
-            hw.tick(a[0], a[1] + 2)
+        note_yes = lay.get("note_yes") or []
+        note_no = lay.get("note_no") or []
+        if note_no:
+            # Line "Lot segregated for 'X' marked dimension" -> NO ; "Gauges available & calibrated" -> YES
+            hw.tick(note_no[0][0], note_no[0][1] + 2)
+            if len(note_yes) > 1:
+                hw.tick(note_yes[1][0], note_yes[1][1] + 2)
+        else:
+            for a in note_yes:
+                hw.tick(a[0], a[1] + 2)
 
     doc.save(out_path, deflate=True)
     doc.close()

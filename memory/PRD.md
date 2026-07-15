@@ -191,6 +191,11 @@ See /app/memory/test_credentials.md (admin/5@Sohangso, dispatch/5@Grewal)
 - MasterDispatch model exposes pdi_* + documents fields (was silently stripping them)
 - Testing: full E2E via curl in TEST mode (blocked run → generate → auto-attach → ASN Completed ASN26486721 → "Uploaded to Portal") + testing agent iteration_16 frontend 100% + self-tested "+ PDI" generate flow in browser (PDI-0014)
 
+## Implemented — Iteration 24 (July 2026): PDI tick placement per user reference
+- Description section: all 3 rows ticked YES (confirmed by user)
+- NOTE section: "Lot segregated for 'X' marked dimension" → NO (✓); "Gauges are available & calibrated" → YES (✓)
+- page_layout now captures note_no anchors; render logic updated; migrated layouts for all 121 templates + 128 revision snapshots so every new/regenerated PDI follows the pattern (verified visually on PDI-0014)
+
 ## Backlog
 - P0: none outstanding
 - P1: PDI Phase 2 — digital/scanned signatures linked to Inspector/Approver master records; review 7 templates having dimension rows without nominal + 2 missing item_code (fix via Template Editor); PATCH semantics for partial updates; factory images/certificates upload (needs object storage); split automation.py into automation/ package; VPS go-live checklist (playwright install, TAFE IP whitelist)
