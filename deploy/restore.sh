@@ -30,5 +30,17 @@ read -r -p "Type 'yes' to continue: " CONFIRM
 mongorestore --uri="$MONGO_URL" --archive="$FILE" --gzip --drop \
   --nsInclude="${DB_NAME}.*"
 
+STAMP="$(basename "$FILE" | sed -E 's/^backup_.*_([0-9]{8}_[0-9]{6})\.gz$/\1/')"
+UPLOADS_FILE="$BACKUP_DIR/uploads_${STAMP}.tar.gz"
+if [[ ! -f "$UPLOADS_FILE" ]]; then
+  UPLOADS_FILE="$(ls -t "$BACKUP_DIR"/uploads_*.tar.gz 2>/dev/null | head -1 || true)"
+fi
+if [[ -n "$UPLOADS_FILE" && -f "$UPLOADS_FILE" ]]; then
+  echo "==> Restoring uploads from $UPLOADS_FILE"
+  tar -xzf "$UPLOADS_FILE" -C "$APP_DIR/backend"
+else
+  echo "==> No uploads archive found — skipping file restore."
+fi
+
 echo "==> Restore complete. Restart the API to be safe:"
 echo "    sudo systemctl restart grewal-api"

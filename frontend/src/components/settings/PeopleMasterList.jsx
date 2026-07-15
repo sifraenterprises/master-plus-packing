@@ -13,7 +13,8 @@ export const PeopleMasterList = ({ title, icon: Icon, kind }) => {
   const [editName, setEditName] = useState("");
 
   const load = () => api.get(`/pdi/masters/${kind}/manage`).then((r) => setItems(r.data)).catch(() => {});
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, []);
 
   const add = async () => {
     if (!value.trim()) return;

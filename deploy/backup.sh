@@ -18,8 +18,15 @@ FILE="$BACKUP_DIR/backup_${DB_NAME}_${STAMP}.gz"
 echo "==> Backing up database '$DB_NAME' -> $FILE"
 mongodump --uri="$MONGO_URL" --db="$DB_NAME" --archive="$FILE" --gzip
 
+UPLOADS_FILE="$BACKUP_DIR/uploads_${STAMP}.tar.gz"
+if [[ -d "$APP_DIR/backend/uploads" ]]; then
+  echo "==> Backing up uploads (PDI templates/reports, invoices) -> $UPLOADS_FILE"
+  tar -czf "$UPLOADS_FILE" -C "$APP_DIR/backend" uploads
+fi
+
 echo "==> Cleaning backups older than ${RETENTION_DAYS} days"
 find "$BACKUP_DIR" -name "backup_*.gz" -type f -mtime +"$RETENTION_DAYS" -delete
+find "$BACKUP_DIR" -name "uploads_*.tar.gz" -type f -mtime +"$RETENTION_DAYS" -delete
 
 echo "==> Done. Current backups:"
 ls -lh "$BACKUP_DIR" | tail -n +2

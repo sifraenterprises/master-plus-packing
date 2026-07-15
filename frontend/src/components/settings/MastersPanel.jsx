@@ -12,7 +12,8 @@ const MasterList = ({ title, icon: Icon, endpoint, testKey }) => {
   const [value, setValue] = useState("");
 
   const load = () => api.get(endpoint).then((r) => setItems(r.data)).catch(() => {});
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, []);
 
   const add = async () => {
     if (!value.trim()) return;
