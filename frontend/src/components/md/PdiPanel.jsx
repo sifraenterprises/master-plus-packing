@@ -25,6 +25,7 @@ export default function PdiPanel({ record, onClose, onChanged }) {
   const [approver, setApprover] = useState("");
   const [lots, setLots] = useState([]);
   const [lotNo, setLotNo] = useState("");
+  const [sampleCount, setSampleCount] = useState("10");
   const [busy, setBusy] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const hasPdi = !!record?.pdi_report_no;
@@ -67,6 +68,7 @@ export default function PdiPanel({ record, onClose, onChanged }) {
         report_date: fmtDate(record.invoice_date), lot_size: String(totalQty || ""),
         lot_no: lotNo, challan_no_dt: `${record.invoice_number} / ${fmtDate(record.invoice_date)}`,
         vender_code: record.customer_code || "", inspector, approver,
+        sample_count: Number(sampleCount) || 10,
       });
       toast.success("PDI generated & attached to this dispatch");
       onChanged();
@@ -166,6 +168,16 @@ export default function PdiPanel({ record, onClose, onChanged }) {
                   <Input value={lotNo} onChange={(e) => setLotNo(e.target.value)} placeholder="Lot number"
                          data-testid="md-pdi-lot-input" className="h-8 mt-1 rounded-sm bg-input border-border text-xs" />
                 )}
+              </div>
+              <div className="col-span-2">
+                <Label className="text-[11px] text-muted-foreground">Samples per Dimension</Label>
+                <Select value={sampleCount} onValueChange={setSampleCount}>
+                  <SelectTrigger className="h-8 mt-1 rounded-sm bg-input border-border text-xs" data-testid="md-pdi-sample-count-select"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5 samples</SelectItem>
+                    <SelectItem value="10">10 samples</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <Button onClick={generate} disabled={busy || !template} data-testid="md-pdi-generate-btn" className="rounded-sm gap-1.5 w-full">

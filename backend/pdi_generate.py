@@ -43,12 +43,7 @@ def _decimals(step: float) -> int:
     return max(1, len(s.split(".")[1]) if "." in s else 0)
 
 
-def _obs_count(freq: str) -> int:
-    return 10
-
-
-def generate_row_values(row: dict, rng: random.Random) -> list[str]:
-    n = _obs_count(row.get("freq", ""))
+def generate_row_values(row: dict, rng: random.Random, n: int = 10) -> list[str]:
     nominal = row.get("nominal")
     if row.get("value_type") == "visual" or nominal is None:
         return ["OK"] * n
@@ -80,9 +75,9 @@ def generate_row_values(row: dict, rng: random.Random) -> list[str]:
     return [f"{v:.{d}f}" for v in vals]
 
 
-def generate_observations(rows: list[dict], seed=None) -> list[list[str]]:
+def generate_observations(rows: list[dict], seed=None, n_obs: int = 10) -> list[list[str]]:
     rng = random.Random(seed)
-    return [generate_row_values(r, rng) for r in rows]
+    return [generate_row_values(r, rng, n_obs) for r in rows]
 
 
 class HandWriter:

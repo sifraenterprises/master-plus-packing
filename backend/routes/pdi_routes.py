@@ -468,6 +468,7 @@ async def generate_report(payload: PdiGenerateInput, user: dict = Depends(get_cu
             dispatch = None
 
     report_no = await _next_report_no()
+    sample_count = payload.sample_count if payload.sample_count in (5, 10) else 10
     report = PdiReport(
         report_no=report_no, template_id=str(template["_id"]),
         template_revision=template.get("revision", 1),
@@ -483,9 +484,10 @@ async def generate_report(payload: PdiGenerateInput, user: dict = Depends(get_cu
         challan_no_dt=payload.challan_no_dt, min_no_dt=payload.min_no_dt,
         vender_code=payload.vender_code, inspector=payload.inspector, approver=payload.approver,
         parameters_note=payload.parameters_note, identification_mark=payload.identification_mark,
+        sample_count=sample_count,
         created_by=user["username"],
     )
-    observations = generate_observations(template["rows"])
+    observations = generate_observations(template["rows"], n_obs=sample_count)
     report.observations = observations
     pdf_path = REPORT_DIR / f"{uuid.uuid4().hex}.pdf"
     try:
@@ -526,7 +528,7 @@ async def regenerate_report(report_id: str, user: dict = Depends(get_current_use
     template = await _template_at_revision(doc["template_id"], doc.get("template_revision", 1))
     if not template.get("rows") or not Path(template.get("source_pdf", "")).exists():
         raise HTTPException(status_code=404, detail="Original template revision unavailable — cannot regenerate")
-    observations = generate_observations(template["rows"])
+    observations = generate_observations(template["rows"], n_obs=doc.get("sample_count", 10))
     pdf_path = doc.get("pdf_path") or str(REPORT_DIR / f"{uuid.uuid4().hex}.pdf")
     try:
         render_report_pdf(template, doc, observations, pdf_path)

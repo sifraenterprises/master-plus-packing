@@ -22,7 +22,7 @@ const fmtDate = (iso) => {
 
 const EMPTY = {
   report_date: today(), lot_size: "", lot_no: "", challan_no_dt: "", min_no_dt: "",
-  vender_code: "", inspector: "", approver: "",
+  vender_code: "", inspector: "", approver: "", sample_count: "10",
   parameters_note: "All dimensions as per drawing", identification_mark: "Sticker on box",
 };
 
@@ -101,7 +101,8 @@ export default function GeneratePanel() {
     setBusy(true);
     try {
       const r = await api.post("/pdi/generate", {
-        ...form, template_id: template.id, master_dispatch_id: dispatch?.id || "",
+        ...form, sample_count: Number(form.sample_count) || 10,
+        template_id: template.id, master_dispatch_id: dispatch?.id || "",
         part_name: selectedItem?.description || "", item_code: selectedItem?.part_number || "",
       });
       setGenerated(r.data);
@@ -202,6 +203,18 @@ export default function GeneratePanel() {
                      className="h-8 mt-1 rounded-sm bg-input border-border text-xs" />
             </div>
           ))}
+          <div>
+            <Label className="text-[11px] text-muted-foreground">Samples per Dimension</Label>
+            <Select value={form.sample_count} onValueChange={(v) => setForm((f) => ({ ...f, sample_count: v }))}>
+              <SelectTrigger className="h-8 mt-1 rounded-sm bg-input border-border text-xs" data-testid="pdi-sample-count-select">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="5">5 samples</SelectItem>
+                <SelectItem value="10">10 samples</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div>
             <Label className="text-[11px] text-muted-foreground">Inspected By</Label>
             <Select value={form.inspector} onValueChange={(v) => setForm((f) => ({ ...f, inspector: v }))}>

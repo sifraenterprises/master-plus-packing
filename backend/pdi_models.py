@@ -89,6 +89,7 @@ class PdiGenerateInput(BaseModel):
     vender_code: str = ""
     inspector: str = ""
     approver: str = ""
+    sample_count: int = 10
     parameters_note: str = "All dimensions as per drawing"
     identification_mark: str = "Sticker on box"
 
@@ -115,6 +116,7 @@ class PdiReport(BaseDocument):
     parameters_note: str = ""
     identification_mark: str = ""
     observations: list[list[str]] = []
+    sample_count: int = 10
     pdf_path: str = ""
     status: str = "generated"  # generated | regenerated
     regenerated_count: int = 0
