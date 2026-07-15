@@ -198,6 +198,12 @@ See /app/memory/test_credentials.md (admin/5@Sohangso, dispatch/5@Grewal)
 - Daily handwriting personality: daily_style(report_date) deterministically varies font (Kalam/PatrickHand), size scale, slant bias, character spacing, baseline drift, ink shade, tick size & pen width per DATE — same-day reports share one "hand", different days look like different sittings; regenerated reports keep their original date's hand (verified visually across 3 dates)
 - Sample count option: operator chooses 5 or 10 samples per dimension (default 10) in both Generate tab and Dispatch List PDI panel; stored on the report (sample_count) and preserved on regenerate (verified: 5-sample PDF fills columns 1-5 only)
 
+## Implemented — Iteration 25 (July 2026): Production deployment audit (pre-VPS-redeploy)
+- Audit fixes: backup.sh now archives backend/uploads (+restore.sh restores it); removed orphan uploads/pdi/ dir (0 refs); fixed 2 eslint warnings → yarn build compiles with ZERO warnings
+- Verified: no conflict markers, all imports resolve, pip check clean, deploy scripts bash -n clean & executable, .env.example complete (27 vars), nginx/systemd configs sound, indexes on all hot collections, fonts + uploads tracked in git for VPS pull
+- Certified: deployment_agent PASS (0 findings) + testing agent iteration_17 (backend 16/16, frontend all routes zero console errors)
+- Challan No/Dt now auto-fills invoice number ONLY (no date) for readability; Emergent badge confirmed preview-only (code 100% Grewal-branded)
+
 ## Backlog
 - P0: none outstanding
 - P1: PDI Phase 2 — digital/scanned signatures linked to Inspector/Approver master records; review 7 templates having dimension rows without nominal + 2 missing item_code (fix via Template Editor); PATCH semantics for partial updates; factory images/certificates upload (needs object storage); split automation.py into automation/ package; VPS go-live checklist (playwright install, TAFE IP whitelist)
