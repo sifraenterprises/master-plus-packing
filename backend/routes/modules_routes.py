@@ -10,15 +10,16 @@ SEED_MODULES = [
     {"key": "asn", "name": "ASN Automation", "description": "Advance Shipping Notice creation and submission automation for customer portals.", "status": "active", "enabled": True, "icon": "Truck"},
     {"key": "eway-bill", "name": "E-Way Bill Automation", "description": "Uploads E-Way Bill numbers from Master Dispatch invoices to the TAFE Vendor Portal — batch runs, retries, test/live modes.", "status": "active", "enabled": True, "icon": "Receipt"},
     {"key": "vendor-ack", "name": "Vendor Acknowledgement", "description": "Automated vendor acknowledgement processing and confirmation tracking.", "status": "active", "enabled": True, "icon": "Handshake"},
-    {"key": "dqms", "name": "DQMS Automation", "description": "Dispatch Quality Management System automation for quality documentation.", "status": "coming_soon", "enabled": False, "icon": "SealCheck"},
+    {"key": "pdi", "name": "AI PDI Generator", "description": "AI-generated Final / Pre-Dispatch Inspection reports — realistic handwritten observations, always within tolerance.", "status": "active", "enabled": True, "icon": "SealCheck"},
 ]
 
 
 async def seed_modules():
+    await db.modules.delete_one({"key": "dqms"})
     for mod in SEED_MODULES:
         await db.modules.update_one({"key": mod["key"]}, {"$setOnInsert": mod}, upsert=True)
     for mod in SEED_MODULES:
-        if mod["key"] in ("packing", "eway-bill"):
+        if mod["key"] in ("packing", "eway-bill", "pdi"):
             await db.modules.update_one({"key": mod["key"]}, {"$set": mod})
 
 

@@ -29,7 +29,7 @@ const NAV = [
   { to: "/portal/dispatch", label: "Dispatch Entry", icon: ClipboardText },
   { to: "/portal/modules/packing", label: "Packing", icon: Package },
   { group: "Automation", icon: Truck, children: AUTOMATION_SUBMENU },
-  { to: "/portal/modules/dqms", label: "DQMS", icon: SealCheck },
+  { to: "/portal/modules/pdi", label: "AI PDI Generator", icon: SealCheck },
   { to: "/portal/reports", label: "Reports", icon: ChartBar },
 ];
 

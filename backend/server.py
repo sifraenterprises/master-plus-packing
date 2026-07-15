@@ -24,6 +24,7 @@ from routes.eway_routes import router as eway_router
 from routes.vendor_ack_routes import router as vendor_ack_router
 from routes.asn_routes import router as asn_router
 from routes.system_routes import router as system_router
+from routes.pdi_routes import router as pdi_router
 
 REQUIRED_ENV = ["MONGO_URL", "DB_NAME", "JWT_SECRET", "ADMIN_USERNAME", "ADMIN_PASSWORD",
                 "DISPATCH_USERNAME", "DISPATCH_PASSWORD"]
@@ -97,6 +98,7 @@ api_router.include_router(eway_router)
 api_router.include_router(vendor_ack_router)
 api_router.include_router(asn_router)
 api_router.include_router(system_router)
+api_router.include_router(pdi_router)
 api_router.include_router(public_router)
 app.include_router(api_router)
 
@@ -162,6 +164,15 @@ async def startup():
     await db.asn_batch_allocations.create_index("asn_number")
     await db.transporters.create_index("name", unique=True)
     await db.automation_logs.create_index([("timestamp", -1)])
+    await db.pdi_master_library.create_index("page_number", unique=True)
+    await db.pdi_master_library.create_index("item_code")
+    await db.pdi_master_library.create_index("part_name")
+    await db.pdi_reports.create_index("report_no")
+    await db.pdi_reports.create_index("invoice_number")
+    await db.pdi_reports.create_index("item_code")
+    await db.pdi_reports.create_index([("created_at", -1)])
+    await db.pdi_inspectors.create_index("name", unique=True)
+    await db.pdi_approvers.create_index("name", unique=True)
     await seed_user("ADMIN_USERNAME", "ADMIN_PASSWORD", "Administrator", "admin")
     await seed_user("DISPATCH_USERNAME", "DISPATCH_PASSWORD", "Dispatch Operator", "dispatch")
     await seed_modules()

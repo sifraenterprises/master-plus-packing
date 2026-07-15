@@ -17,6 +17,7 @@ import PackingModule from "@/pages/PackingModule";
 import EWayBillModule from "@/pages/EWayBillModule";
 import VendorAckModule from "@/pages/VendorAckModule";
 import AsnModule from "@/pages/AsnModule";
+import PdiModule from "@/pages/PdiModule";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
 
@@ -64,6 +65,7 @@ function App() {
             <Route path="modules/eway-bill" element={<EWayBillModule />} />
             <Route path="modules/vendor-ack" element={<VendorAckModule />} />
             <Route path="modules/asn" element={<AsnModule />} />
+            <Route path="modules/pdi" element={<PdiModule />} />
             <Route path="modules/:moduleKey" element={<ModulePlaceholder />} />
             <Route
               path="settings"

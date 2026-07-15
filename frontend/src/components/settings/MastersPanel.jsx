@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash, Factory, Truck } from "@phosphor-icons/react";
+import { Plus, Trash, Factory, Truck, UserCircle, SealCheck } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import api, { apiError } from "@/lib/api";
@@ -66,11 +66,13 @@ const MasterList = ({ title, icon: Icon, endpoint, testKey }) => {
 export const MastersPanel = () => (
   <div className="space-y-4">
     <p className="text-sm text-muted-foreground">
-      These master lists feed the dropdowns across Master Dispatch, ASN, E-Way Bill and Vendor Acknowledgement modules.
+      These master lists feed the dropdowns across Master Dispatch, ASN, E-Way Bill, Vendor Acknowledgement and AI PDI Generator modules.
     </p>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <MasterList title="Plants" icon={Factory} endpoint="/master-dispatch/plants" testKey="plants" />
       <MasterList title="Transporters" icon={Truck} endpoint="/master-dispatch/transporters" testKey="transporters" />
+      <MasterList title="PDI Inspectors" icon={UserCircle} endpoint="/pdi/masters/inspectors" testKey="inspectors" />
+      <MasterList title="PDI Approvers" icon={SealCheck} endpoint="/pdi/masters/approvers" testKey="approvers" />
     </div>
   </div>
 );
