@@ -76,6 +76,7 @@ export default function TemplateLibrary() {
       await api.delete(`/pdi/templates/${t.id}`);
       toast.success("Template deleted");
       load();
+      pollStatus();
     } catch (err) { toast.error(apiError(err)); }
   };
 
@@ -223,7 +224,7 @@ export default function TemplateLibrary() {
                               onClose={() => setReplacing(null)}
                               onSaved={() => { setReplacing(null); load(); }} />
       )}
-      <UploadTemplateDialog open={uploadOpen} onClose={() => setUploadOpen(false)} onSaved={load} />
+      <UploadTemplateDialog open={uploadOpen} onClose={() => setUploadOpen(false)} onSaved={() => { load(); pollStatus(); }} />
     </div>
   );
 }

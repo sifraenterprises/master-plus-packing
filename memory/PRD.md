@@ -168,10 +168,21 @@ Secure, modular web portal for Grewal Engineering Work that becomes the company'
 - New files: backend/pdi_models.py, pdi_extract.py, pdi_generate.py, routes/pdi_routes.py; frontend pages/PdiModule.jsx + components/pdi/{GeneratePanel,ReportsHistory,TemplateLibrary,TemplateEditorDialog,PdfPreviewDialog}.jsx; pymupdf added to requirements
 - Testing iteration_13: backend 14/14 pytest, frontend 100% (all flows incl. generate→preview, regenerate, template edit, masters CRUD, regression on existing modules)
 
-## Backlog
-- P0: none outstanding
-- P1: PDI Phase 2 — digital/scanned signatures for Inspectors/Approvers; review 7 templates having dimension rows without nominal + 2 missing item_code (fix via Template Editor); PATCH semantics for partial updates; factory images/certificates upload (needs object storage); split automation.py into automation/ package; VPS go-live checklist (playwright install, TAFE IP whitelist)
-- P2: daily "morning summary" Telegram alert (dispatches/boxes/pending ASNs); barcode/QR generation, email/WhatsApp/SMS notifications, SAP/ERP integrations, per-user password change UI, dashboard charts (recharts)
+## Implemented — Iteration 22 (July 2026): PDI scalability — unlimited templates, revisions, auto-population
+- Data-driven Template Library (zero code changes for new templates): admin uploads any PDI PDF → POST /api/pdi/templates/upload → background Gemini OCR with multi-page CONTINUATION detection groups pages into drafts (poll /api/pdi/uploads/{id}) → admin reviews/edits drafts (merge consecutive drafts for multi-page templates) BEFORE saving → POST /api/pdi/templates. Uploaded originals kept at uploads/pdi_uploads/, template PDFs at uploads/pdi_templates/tpl_*.pdf
+- Template metadata: mapped_parts[] (matched first), customer + plant (customer-specific templates preferred in matching), effective_from/to date windows, active/inactive status (inactive skipped by matching), guarded DELETE (409 if reports exist)
+- Revision control: every functional edit/PDF-replace bumps revision + frozen snapshot in db.pdi_template_revisions (status-only toggles do NOT bump); reports store template_revision; regenerate uses the ORIGINAL revision snapshot; GET /templates/{id}/revisions history; replaced PDFs never overwrite old files
+- Multi-page rendering: render_report_pdf overlays every template page (per-page layouts, rows carry page no, headers repeated per page) — verified with merged 2-page template
+- Auto-population from Master Dispatch: report date=invoice date (dd.mm.yyyy), lot size=total invoice qty, challan=invoice no/date, vendor code=customer code, part name/item code stored from dispatch item; Lot No from packing slips by invoice — auto-filled when 1 slip, dropdown when multiple, manual input when none
+- Inspector/Approver masters upgraded: {name, active} records with Add/Rename/Activate-Deactivate in Settings (PeopleMasterList.jsx); only active names in Generate dropdowns; endpoints /pdi/masters/{kind}/manage + PUT by id
+- Template Preview screen: 3 tabs — Original PDF | Extracted Data (fields+rows) | Live Sample PDI (POST /templates/{id}/preview renders sample, also /templates/preview-draft for drafts pre-save)
+- Reports history: Inspector / Approver / Revision columns (+created_by tooltip = audit trail)
+- Testing: backend 13/13 pytest (tests/test_pdi_extended.py) incl. revision-safe regenerate, lots flow, masters manage, delete-guard; frontend 8/8 flows (iteration_15) incl. full upload→draft→save→delete cycle; post-test fixes: stale library count badge, Badge-in-<p> warning, status toggle no longer bumps revision (verified)
 
 ## Test Credentials
 See /app/memory/test_credentials.md (admin/5@Sohangso, dispatch/5@Grewal)
+
+## Backlog
+- P0: none outstanding
+- P1: PDI Phase 2 — digital/scanned signatures linked to Inspector/Approver master records; review 7 templates having dimension rows without nominal + 2 missing item_code (fix via Template Editor); PATCH semantics for partial updates; factory images/certificates upload (needs object storage); split automation.py into automation/ package; VPS go-live checklist (playwright install, TAFE IP whitelist)
+- P2: daily "morning summary" Telegram alert (dispatches/boxes/pending ASNs); "Generate PDI" shortcut on Dispatch List rows; barcode/QR generation, email/WhatsApp/SMS notifications, SAP/ERP integrations, per-user password change UI, dashboard charts (recharts)

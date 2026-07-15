@@ -200,11 +200,14 @@ async def update_template(template_id: str, payload: PdiTemplateUpdate, user: di
         updates["pages"] = len(layouts)
     if "mapped_parts" in updates:
         updates["mapped_parts"] = [p.strip() for p in updates["mapped_parts"] if p.strip()]
-    updates["revision"] = doc.get("revision", 1) + 1
+    functional_change = bool(set(updates) - {"status"})
+    if functional_change:
+        updates["revision"] = doc.get("revision", 1) + 1
     updates["updated_at"] = utcnow().isoformat()
     await db.pdi_master_library.update_one({"_id": doc["_id"]}, {"$set": updates})
     saved = await db.pdi_master_library.find_one({"_id": doc["_id"]})
-    await save_template_revision(saved, user["username"])
+    if functional_change:
+        await save_template_revision(saved, user["username"])
     await log_activity(user["username"], "pdi_template_edited",
                        f"{saved.get('part_name')} · rev {saved.get('revision')}", "pdi")
     return PdiTemplate.from_mongo(saved).model_dump(exclude={"layouts"})
