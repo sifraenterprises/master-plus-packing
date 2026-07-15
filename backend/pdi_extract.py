@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import uuid
 import asyncio
 import logging
 from pathlib import Path
@@ -14,19 +15,22 @@ logger = logging.getLogger(__name__)
 
 PDI_DIR = Path(__file__).parent / "uploads" / "pdi_templates"
 PDI_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR = Path(__file__).parent / "uploads" / "pdi_uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MASTER_PDF = Path(__file__).parent / "uploads" / "pdi_master_template.pdf"
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
 CHUNK_PAGES = 8
 
-PDI_PROMPT = """You are an expert OCR engine reading "FINAL / PRE-DISPATCH INSPECTION REPORT" quality-template pages of Grewal Engineering Works.
-Each page of the attached PDF is ONE inspection report template for one part.
+PDI_PROMPT = """You are an expert OCR engine reading "FINAL / PRE-DISPATCH INSPECTION REPORT" style quality-template pages.
+Each page of the attached PDF belongs to an inspection report template for a part. A template is USUALLY one page, but can span multiple consecutive pages (continuation of the same dimension table).
 For EVERY page return ONLY valid JSON (no markdown) in exactly this structure:
-{"pages":[{"page":1,"part_name":"","item_code":"","drg_no":"",
+{"pages":[{"page":1,"continuation":false,"part_name":"","item_code":"","drg_no":"",
 "rows":[{"sr":"01","specified_dimension":"Dim 19.5(\u00b10.20)","method":"Vernier 0.02","freq":"5/Lot","nominal":19.5,"tol_low":-0.20,"tol_high":0.20,"value_type":"dimension"}]}]}
 Rules:
 - part_name is next to "Part Name :", item_code next to "ITEM CODE :", drg_no next to "DRG. No :".
-- rows: every row of the dimension table that contains a specified dimension. Skip empty rows. Keep the printed serial number in "sr".
+- "continuation": true ONLY when this page clearly CONTINUES the previous page's template (same part/item code repeated with the dimension table continuing, serial numbers continuing from previous page, or "Page X of Y" with X > 1, or no part header at all). A page that starts a new part's report has continuation false.
+- rows: every row of the dimension table on THIS page that contains a specified dimension. Skip empty rows. Keep the printed serial number in "sr".
 - specified_dimension, method, freq: copy the printed text as-is.
 - nominal: the base numeric value of the dimension. tol_low / tol_high: allowed deviations as signed numbers.
   Examples: "(\u00b10.20)" -> tol_low -0.20, tol_high 0.20 ; "(-0.30)" -> tol_low -0.30, tol_high 0 ; "(+0.30)" -> tol_low 0, tol_high 0.30 ; "(+0.5/-0.2)" -> tol_high 0.5, tol_low -0.2.
@@ -193,6 +197,36 @@ def _save_page_pdf(reader: PdfReader, index: int) -> str:
     return str(path)
 
 
+def _clean_row(r: dict, page: int = 1) -> dict:
+    def _num(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+    return {
+        "sr": str(r.get("sr") or "").strip(),
+        "specified_dimension": str(r.get("specified_dimension") or "").strip(),
+        "method": str(r.get("method") or "").strip(),
+        "freq": str(r.get("freq") or "").strip(),
+        "nominal": _num(r.get("nominal")),
+        "tol_low": _num(r.get("tol_low")),
+        "tol_high": _num(r.get("tol_high")),
+        "value_type": "visual" if str(r.get("value_type", "")).lower() == "visual" else "dimension",
+        "page": page,
+        "remarks": "",
+    }
+
+
+async def save_template_revision(template_doc: dict, saved_by: str):
+    snap = {k: template_doc.get(k) for k in
+            ("part_name", "item_code", "drg_no", "rows", "layouts", "pages", "source_pdf",
+             "mapped_parts", "customer", "plant", "effective_from", "effective_to", "status")}
+    await db.pdi_template_revisions.update_one(
+        {"template_id": str(template_doc["_id"]), "revision": template_doc.get("revision", 1)},
+        {"$set": {**snap, "saved_at": utcnow().isoformat(), "saved_by": saved_by}},
+        upsert=True)
+
+
 async def import_master_pdf(pdf_path: str = None, triggered_by: str = "system"):
     path = Path(pdf_path) if pdf_path else MASTER_PDF
     if not path.exists():
@@ -225,37 +259,27 @@ async def import_master_pdf(pdf_path: str = None, triggered_by: str = "system"):
                     run_state["errors"].append(f"Page {abs_page}: no data returned")
                     run_state["processed"] += 1
                     continue
-                rows = []
-                for r in data.get("rows") or []:
-                    def _num(v):
-                        try:
-                            return float(v)
-                        except (TypeError, ValueError):
-                            return None
-                    rows.append({
-                        "sr": str(r.get("sr") or "").strip(),
-                        "specified_dimension": str(r.get("specified_dimension") or "").strip(),
-                        "method": str(r.get("method") or "").strip(),
-                        "freq": str(r.get("freq") or "").strip(),
-                        "nominal": _num(r.get("nominal")),
-                        "tol_low": _num(r.get("tol_low")),
-                        "tol_high": _num(r.get("tol_high")),
-                        "value_type": "visual" if str(r.get("value_type", "")).lower() == "visual" else "dimension",
-                        "remarks": "",
-                    })
+                rows = [_clean_row(r, 1) for r in (data.get("rows") or [])]
                 source = _save_page_pdf(reader, i)
+                existing = await db.pdi_master_library.find_one({"page_number": abs_page}, {"revision": 1})
+                new_rev = (existing or {}).get("revision", 0) + 1
+                lay = layouts.get(abs_page, {})
                 await db.pdi_master_library.update_one(
                     {"page_number": abs_page},
                     {"$set": {
                         "part_name": str(data.get("part_name") or "").strip(),
                         "item_code": str(data.get("item_code") or "").strip(),
                         "drg_no": str(data.get("drg_no") or "").strip(),
-                        "rows": rows, "layout": layouts.get(abs_page, {}),
+                        "rows": rows, "layouts": [lay], "pages": 1, "revision": new_rev,
                         "source_pdf": source, "updated_at": utcnow().isoformat(),
                     },
                      "$setOnInsert": {"page_number": abs_page, "status": "active",
+                                      "mapped_parts": [], "customer": "", "plant": "",
+                                      "effective_from": "", "effective_to": "",
                                       "created_at": utcnow().isoformat()}},
                     upsert=True)
+                doc_saved = await db.pdi_master_library.find_one({"page_number": abs_page})
+                await save_template_revision(doc_saved, triggered_by)
                 run_state["imported"] += 1
                 run_state["processed"] += 1
 
@@ -266,3 +290,86 @@ async def import_master_pdf(pdf_path: str = None, triggered_by: str = "system"):
                                          "triggered_by": triggered_by})
     logger.info("PDI import finished: %s/%s imported, %s errors",
                 run_state["imported"], total, len(run_state["errors"]))
+
+
+# ---------- Custom template uploads (data-driven, unlimited templates) ----------
+
+async def process_upload(upload_id: str, triggered_by: str = "admin"):
+    """Background OCR of an uploaded PDF: extracts per-page data, groups continuation
+    pages into multi-page template drafts and stores them on the upload record."""
+    path = UPLOAD_DIR / f"{upload_id}.pdf"
+    try:
+        reader = PdfReader(str(path))
+        total = len(reader.pages)
+        sem = asyncio.Semaphore(3)
+        chunks = [(s, min(s + CHUNK_PAGES, total)) for s in range(0, total, CHUNK_PAGES)]
+        pages_data: dict = {}
+        errors: list = []
+
+        async def process(start, end):
+            async with sem:
+                try:
+                    pages = await _gemini_extract(_chunk_pdf(reader, start, end))
+                except Exception as e:
+                    errors.append(f"Pages {start + 1}-{end}: {str(e)[:150]}")
+                    return
+                for p in pages:
+                    rel = int(p.get("page", 0))
+                    if rel:
+                        pages_data[start + rel] = p
+                await db.pdi_uploads.update_one({"upload_id": upload_id},
+                                                {"$inc": {"processed": end - start}})
+
+        await asyncio.gather(*[process(s, e) for s, e in chunks])
+
+        drafts = []
+        current = None
+        for pno in range(1, total + 1):
+            data = pages_data.get(pno) or {}
+            is_cont = bool(data.get("continuation")) and current is not None
+            if not is_cont:
+                if current:
+                    drafts.append(current)
+                current = {"page_start": pno, "page_end": pno,
+                           "part_name": str(data.get("part_name") or "").strip(),
+                           "item_code": str(data.get("item_code") or "").strip(),
+                           "drg_no": str(data.get("drg_no") or "").strip(),
+                           "rows": []}
+            else:
+                current["page_end"] = pno
+                if not current["part_name"]:
+                    current["part_name"] = str(data.get("part_name") or "").strip()
+            rel_page = pno - current["page_start"] + 1
+            current["rows"] += [_clean_row(r, rel_page) for r in (data.get("rows") or [])]
+        if current:
+            drafts.append(current)
+
+        await db.pdi_uploads.update_one({"upload_id": upload_id}, {"$set": {
+            "status": "done", "drafts": drafts, "errors": errors,
+            "finished_at": utcnow().isoformat()}})
+        logger.info("PDI upload %s processed: %s pages -> %s drafts", upload_id, total, len(drafts))
+    except Exception as e:
+        logger.exception("PDI upload processing failed")
+        await db.pdi_uploads.update_one({"upload_id": upload_id}, {"$set": {
+            "status": "failed", "errors": [str(e)[:200]]}})
+
+
+def extract_template_pdf(upload_id: str, page_start: int, page_end: int):
+    """Cut the selected page range into a permanent template source PDF and compute layouts."""
+    src = UPLOAD_DIR / f"{upload_id}.pdf"
+    if not src.exists():
+        raise FileNotFoundError("Upload not found on server")
+    reader = PdfReader(str(src))
+    total = len(reader.pages)
+    page_start = max(1, page_start)
+    page_end = min(total, max(page_start, page_end))
+    out = PDI_DIR / f"tpl_{uuid.uuid4().hex}.pdf"
+    writer = PdfWriter()
+    for i in range(page_start - 1, page_end):
+        writer.add_page(reader.pages[i])
+    with open(out, "wb") as f:
+        writer.write(f)
+    doc = fitz.open(str(out))
+    layouts = [page_layout(doc[i]) for i in range(len(doc))]
+    doc.close()
+    return str(out), layouts

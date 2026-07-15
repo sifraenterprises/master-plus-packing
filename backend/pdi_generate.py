@@ -118,57 +118,62 @@ class HandWriter:
 
 def render_report_pdf(template: dict, report: dict, observations: list[list[str]],
                       out_path: str, seed=None):
-    """Overlay handwritten-style entries onto the original template page."""
+    """Overlay handwritten-style entries onto the original template page(s)."""
     rng = random.Random(seed)
     doc = fitz.open(template["source_pdf"])
-    page = doc[0]
-    hw = HandWriter(page, rng)
-    lay = template.get("layout") or {}
-
-    bounds = lay.get("bounds") or {}
-
-    def at(key, text, size=10, max_w=None, dy=0):
-        a = lay.get(key)
-        if a and text:
-            hw.write(text, a[0], a[1] + 3.5 + dy, size=size,
-                     max_w=bounds.get(key, max_w))
-
-    at("report_no", report.get("report_no"), 10, max_w=55)
-    at("date", report.get("report_date"), 10, max_w=95)
-    at("lot_size", report.get("lot_size"), 10, max_w=65)
-    at("lot_no", report.get("lot_no"), 10, max_w=90)
-    at("challan", report.get("challan_no_dt"), 9.5, max_w=100)
-    at("min_no", report.get("min_no_dt"), 9, max_w=58)
-    at("vender_code", report.get("vender_code"), 10, max_w=100)
-
-    yes_x = lay.get("desc_yes_x", 592.0)
-    for y in lay.get("desc_ys", []):
-        hw.tick(yes_x, y)
-
-    cols = lay.get("cols") or []
-    row_map = {r["sr"]: r["y"] for r in lay.get("rows") or []}
-    row_ys = [r["y"] for r in lay.get("rows") or []]
+    layouts = template.get("layouts") or ([template["layout"]] if template.get("layout") else [{}])
     rows = template.get("rows") or []
-    for idx, trow in enumerate(rows):
-        y = row_map.get(trow.get("sr")) or (row_ys[idx] if idx < len(row_ys) else None)
-        if y is None:
+
+    for pno in range(len(doc)):
+        page = doc[pno]
+        lay = layouts[pno] if pno < len(layouts) else {}
+        if not lay:
             continue
-        vals = observations[idx] if idx < len(observations) else []
-        for c, val in enumerate(vals[:len(cols)]):
-            hw.write(val, cols[c], y + 3.2, size=8.6 if len(val) > 4 else 9.4,
-                     max_w=36, center=True)
-        hw.write("O", lay.get("decision_x", 732.0), y + 3.5, size=10.5, center=True)
+        hw = HandWriter(page, rng)
+        bounds = lay.get("bounds") or {}
 
-    insp, appr = lay.get("inspected_by"), lay.get("approved_by")
-    if insp and report.get("inspector"):
-        hw.write(report["inspector"], insp[0], insp[1] + 3.5, size=11.5, max_w=200)
-    if appr and report.get("approver"):
-        hw.write(report["approver"], appr[0], appr[1] + 3.5, size=11.5, max_w=200)
+        def at(key, text, size=10, max_w=None, dy=0):
+            a = lay.get(key)
+            if a and text:
+                hw.write(text, a[0], a[1] + 3.5 + dy, size=size,
+                         max_w=bounds.get(key, max_w))
 
-    at("parameters", report.get("parameters_note"), 9.5, max_w=330)
-    at("id_mark", report.get("identification_mark"), 9.5, max_w=300)
-    for a in lay.get("note_yes") or []:
-        hw.tick(a[0], a[1] + 2)
+        at("report_no", report.get("report_no"), 10, max_w=55)
+        at("date", report.get("report_date"), 10, max_w=95)
+        at("lot_size", report.get("lot_size"), 10, max_w=65)
+        at("lot_no", report.get("lot_no"), 10, max_w=90)
+        at("challan", report.get("challan_no_dt"), 9.5, max_w=100)
+        at("min_no", report.get("min_no_dt"), 9, max_w=58)
+        at("vender_code", report.get("vender_code"), 10, max_w=100)
+
+        yes_x = lay.get("desc_yes_x", 592.0)
+        for y in lay.get("desc_ys", []):
+            hw.tick(yes_x, y)
+
+        cols = lay.get("cols") or []
+        row_map = {r["sr"]: r["y"] for r in lay.get("rows") or []}
+        row_ys = [r["y"] for r in lay.get("rows") or []]
+        page_rows = [(idx, r) for idx, r in enumerate(rows) if int(r.get("page") or 1) == pno + 1]
+        for pos, (idx, trow) in enumerate(page_rows):
+            y = row_map.get(trow.get("sr")) or (row_ys[pos] if pos < len(row_ys) else None)
+            if y is None:
+                continue
+            vals = observations[idx] if idx < len(observations) else []
+            for c, val in enumerate(vals[:len(cols)]):
+                hw.write(val, cols[c], y + 3.2, size=8.6 if len(val) > 4 else 9.4,
+                         max_w=36, center=True)
+            hw.write("O", lay.get("decision_x", 732.0), y + 3.5, size=10.5, center=True)
+
+        insp, appr = lay.get("inspected_by"), lay.get("approved_by")
+        if insp and report.get("inspector"):
+            hw.write(report["inspector"], insp[0], insp[1] + 3.5, size=11.5, max_w=200)
+        if appr and report.get("approver"):
+            hw.write(report["approver"], appr[0], appr[1] + 3.5, size=11.5, max_w=200)
+
+        at("parameters", report.get("parameters_note"), 9.5, max_w=330)
+        at("id_mark", report.get("identification_mark"), 9.5, max_w=300)
+        for a in lay.get("note_yes") or []:
+            hw.tick(a[0], a[1] + 2)
 
     doc.save(out_path, deflate=True)
     doc.close()

@@ -5,21 +5,20 @@ import { DownloadSimple } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import api, { apiError } from "@/lib/api";
 
-export default function PdfPreviewDialog({ open, onClose, title, pdfUrl, downloadName }) {
+export default function PdfPreviewDialog({ open, onClose, title, pdfUrl, downloadName, post = false }) {
   const [blobUrl, setBlobUrl] = useState("");
 
   useEffect(() => {
     let revoke = "";
     if (open && pdfUrl) {
-      api.get(pdfUrl, { responseType: "blob" })
-        .then((r) => {
-          revoke = URL.createObjectURL(new Blob([r.data], { type: "application/pdf" }));
-          setBlobUrl(revoke);
-        })
-        .catch((err) => toast.error(apiError(err)));
+      const req = post ? api.post(pdfUrl, {}, { responseType: "blob" }) : api.get(pdfUrl, { responseType: "blob" });
+      req.then((r) => {
+        revoke = URL.createObjectURL(new Blob([r.data], { type: "application/pdf" }));
+        setBlobUrl(revoke);
+      }).catch((err) => toast.error(apiError(err)));
     }
     return () => { if (revoke) URL.revokeObjectURL(revoke); setBlobUrl(""); };
-  }, [open, pdfUrl]);
+  }, [open, pdfUrl, post]);
 
   const download = () => {
     if (!blobUrl) return;

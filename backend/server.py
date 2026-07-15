@@ -173,6 +173,8 @@ async def startup():
     await db.pdi_reports.create_index([("created_at", -1)])
     await db.pdi_inspectors.create_index("name", unique=True)
     await db.pdi_approvers.create_index("name", unique=True)
+    await db.pdi_uploads.create_index("upload_id", unique=True)
+    await db.pdi_template_revisions.create_index([("template_id", 1), ("revision", -1)])
     await seed_user("ADMIN_USERNAME", "ADMIN_PASSWORD", "Administrator", "admin")
     await seed_user("DISPATCH_USERNAME", "DISPATCH_PASSWORD", "Dispatch Operator", "dispatch")
     await seed_modules()

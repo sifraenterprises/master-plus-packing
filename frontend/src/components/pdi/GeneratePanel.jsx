@@ -14,6 +14,12 @@ const today = () => {
   return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
 };
 
+const fmtDate = (iso) => {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return "";
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  return `${d}.${m}.${y}`;
+};
+
 const EMPTY = {
   report_date: today(), lot_size: "", lot_no: "", challan_no_dt: "", min_no_dt: "",
   vender_code: "", inspector: "", approver: "",
@@ -24,6 +30,8 @@ export default function GeneratePanel() {
   const [dispatchQ, setDispatchQ] = useState("");
   const [dispatches, setDispatches] = useState([]);
   const [dispatch, setDispatch] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [lots, setLots] = useState([]);
   const [template, setTemplate] = useState(null);
   const [tplQ, setTplQ] = useState("");
   const [tplResults, setTplResults] = useState([]);
@@ -61,17 +69,26 @@ export default function GeneratePanel() {
 
   const pickItem = async (d, item) => {
     setDispatch(d);
+    setSelectedItem(item);
+    const invDate = fmtDate(d.invoice_date) || d.invoice_date || "";
+    const dLots = d.lot_numbers || [];
+    setLots(dLots);
     setForm((f) => ({
       ...f,
-      lot_size: item.quantity ? String(item.quantity) : f.lot_size,
-      challan_no_dt: d.invoice_number ? `${d.invoice_number} / ${d.invoice_date || ""}`.trim() : f.challan_no_dt,
+      report_date: invDate || f.report_date,
+      lot_size: d.total_quantity ? String(d.total_quantity) : f.lot_size,
+      lot_no: dLots.length === 1 ? dLots[0] : dLots.includes(f.lot_no) ? f.lot_no : "",
+      challan_no_dt: d.invoice_number ? `${d.invoice_number} / ${invDate}`.trim() : f.challan_no_dt,
       vender_code: d.customer_code || f.vender_code,
     }));
+    if (dLots.length > 1) toast.info(`${dLots.length} lot numbers found for this invoice — select the correct one.`);
+    if (dLots.length === 0) toast.warning("No packing slip found for this invoice — enter the Lot No manually.");
     try {
-      const r = await api.get("/pdi/match", { params: { identifier: item.part_number || item.description } });
+      const r = await api.get("/pdi/match", { params: { identifier: item.part_number || item.description, customer: d.customer_name || "" } });
       if (r.data.matched) {
         setTemplate(r.data.template);
-        toast.success(`Template matched: ${r.data.template.part_name} (page ${r.data.template.page_number})`);
+        const alt = r.data.alternatives?.length ? ` (${r.data.alternatives.length} alternative${r.data.alternatives.length > 1 ? "s" : ""} available)` : "";
+        toast.success(`Template matched: ${r.data.template.part_name} · rev ${r.data.template.revision || 1}${alt}`);
       } else {
         setTemplate(null);
         toast.warning("No matching template — search and select one manually below.");
@@ -85,6 +102,7 @@ export default function GeneratePanel() {
     try {
       const r = await api.post("/pdi/generate", {
         ...form, template_id: template.id, master_dispatch_id: dispatch?.id || "",
+        part_name: selectedItem?.description || "", item_code: selectedItem?.part_number || "",
       });
       setGenerated(r.data);
       setPreviewOpen(true);
@@ -129,7 +147,7 @@ export default function GeneratePanel() {
             <div className="flex items-center justify-between border border-primary/40 rounded-sm px-3 py-2 bg-primary/5" data-testid="pdi-selected-template">
               <div>
                 <p className="text-sm font-bold">{template.part_name}</p>
-                <p className="text-[11px] text-muted-foreground">Item {template.item_code} · Drg {template.drg_no} · Page {template.page_number} · {template.rows.length} dimensions</p>
+                <p className="text-[11px] text-muted-foreground">Item {template.item_code} · Drg {template.drg_no} · rev {template.revision || 1} · {template.rows.length} dimensions</p>
               </div>
               <Button size="sm" variant="ghost" onClick={() => setTemplate(null)} className="rounded-sm text-xs" data-testid="pdi-clear-template">Change</Button>
             </div>
@@ -154,8 +172,30 @@ export default function GeneratePanel() {
       <div className="border border-border bg-card rounded-sm p-4 space-y-3">
         <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">3 · Report details</p>
         <div className="grid grid-cols-2 gap-3">
-          {[["report_date", "Report Date"], ["lot_size", "Lot Size"], ["lot_no", "Lot No"],
-            ["challan_no_dt", "Challan No / Dt."], ["min_no_dt", "MIN No / Dt."], ["vender_code", "Vender Code"]].map(([k, label]) => (
+          {[["report_date", "Report Date"], ["lot_size", "Lot Size"]].map(([k, label]) => (
+            <div key={k}>
+              <Label className="text-[11px] text-muted-foreground">{label}</Label>
+              <Input value={form[k]} onChange={set(k)} data-testid={`pdi-field-${k}`}
+                     className="h-8 mt-1 rounded-sm bg-input border-border text-xs" />
+            </div>
+          ))}
+          <div>
+            <Label className="text-[11px] text-muted-foreground">Lot No {lots.length > 1 && <span className="text-amber-500">({lots.length} lots — select)</span>}</Label>
+            {lots.length > 1 ? (
+              <Select value={form.lot_no} onValueChange={(v) => setForm((f) => ({ ...f, lot_no: v }))}>
+                <SelectTrigger className="h-8 mt-1 rounded-sm bg-input border-border text-xs" data-testid="pdi-lot-select">
+                  <SelectValue placeholder="Select lot number" />
+                </SelectTrigger>
+                <SelectContent>
+                  {lots.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input value={form.lot_no} onChange={set("lot_no")} data-testid="pdi-field-lot_no"
+                     className="h-8 mt-1 rounded-sm bg-input border-border text-xs" />
+            )}
+          </div>
+          {[["challan_no_dt", "Challan No / Dt."], ["min_no_dt", "MIN No / Dt."], ["vender_code", "Vender Code"]].map(([k, label]) => (
             <div key={k}>
               <Label className="text-[11px] text-muted-foreground">{label}</Label>
               <Input value={form[k]} onChange={set(k)} data-testid={`pdi-field-${k}`}

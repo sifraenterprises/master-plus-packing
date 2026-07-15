@@ -4,6 +4,7 @@ import { Plus, Trash, Factory, Truck, UserCircle, SealCheck } from "@phosphor-ic
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import api, { apiError } from "@/lib/api";
+import { PeopleMasterList } from "./PeopleMasterList";
 
 const MasterList = ({ title, icon: Icon, endpoint, testKey }) => {
   const [items, setItems] = useState([]);
@@ -71,8 +72,8 @@ export const MastersPanel = () => (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <MasterList title="Plants" icon={Factory} endpoint="/master-dispatch/plants" testKey="plants" />
       <MasterList title="Transporters" icon={Truck} endpoint="/master-dispatch/transporters" testKey="transporters" />
-      <MasterList title="PDI Inspectors" icon={UserCircle} endpoint="/pdi/masters/inspectors" testKey="inspectors" />
-      <MasterList title="PDI Approvers" icon={SealCheck} endpoint="/pdi/masters/approvers" testKey="approvers" />
+      <PeopleMasterList title="PDI Inspectors" icon={UserCircle} kind="inspectors" />
+      <PeopleMasterList title="PDI Approvers" icon={SealCheck} kind="approvers" />
     </div>
   </div>
 );
