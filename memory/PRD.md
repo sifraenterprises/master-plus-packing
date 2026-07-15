@@ -195,6 +195,7 @@ See /app/memory/test_credentials.md (admin/5@Sohangso, dispatch/5@Grewal)
 - Description section: row 1 YES, row 2 ("Heat treatment cut sample enclosed") NO, row 3 YES (final user correction)
 - NOTE section: "Lot segregated for 'X' marked dimension" → NO (✓); "Gauges are available & calibrated" → YES (✓)
 - page_layout now captures note_no anchors; render logic updated; migrated layouts for all 121 templates + 128 revision snapshots so every new/regenerated PDI follows the pattern (verified visually on PDI-0014)
+- Daily handwriting personality: daily_style(report_date) deterministically varies font (Kalam/PatrickHand), size scale, slant bias, character spacing, baseline drift, ink shade, tick size & pen width per DATE — same-day reports share one "hand", different days look like different sittings; regenerated reports keep their original date's hand (verified visually across 3 dates)
 
 ## Backlog
 - P0: none outstanding

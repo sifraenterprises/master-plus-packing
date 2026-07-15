@@ -11,6 +11,26 @@ FONTS = ["Kalam-Regular.ttf", "PatrickHand-Regular.ttf", "Caveat-Regular.ttf"]
 BASE_INK = (31 / 255, 79 / 255, 163 / 255)
 
 
+def daily_style(date_key: str) -> dict:
+    """Deterministic per-day handwriting personality: different pen, slant,
+    size and spacing habits each day so output never looks machine-uniform."""
+    rng = random.Random(f"gew-hand-{(date_key or '').strip()}")
+    ink_shift = rng.uniform(-0.10, 0.08)
+    return {
+        "font": rng.choice(FONTS[:2]),
+        "size_scale": rng.uniform(0.90, 1.10),
+        "slant_bias": rng.uniform(-1.6, 1.6),
+        "spacing_bias": rng.uniform(-0.08, 0.30),
+        "baseline_bias": rng.uniform(-0.45, 0.45),
+        "ink": (max(0.0, BASE_INK[0] + ink_shift * 0.5),
+                max(0.0, BASE_INK[1] + ink_shift),
+                min(1.0, max(0.35, BASE_INK[2] + ink_shift * 0.7))),
+        "tick_size": rng.uniform(6.2, 7.8),
+        "pen_width": rng.uniform(1.0, 1.35),
+        "jitter_scale": rng.uniform(0.8, 1.25),
+    }
+
+
 def _least_count(method: str) -> float:
     m = re.search(r"0\.\d+", method or "")
     if m:
@@ -66,13 +86,15 @@ def generate_observations(rows: list[dict], seed=None) -> list[list[str]]:
 
 
 class HandWriter:
-    def __init__(self, page, rng: random.Random):
+    def __init__(self, page, rng: random.Random, style: dict = None):
         self.page = page
         self.rng = rng
-        self.fontfile = str(FONT_DIR / rng.choice(FONTS[:2]))
+        self.style = style or daily_style("")
+        self.fontfile = str(FONT_DIR / self.style["font"])
         self.font = fitz.Font(fontfile=self.fontfile)
-        j = rng.uniform(-0.03, 0.03)
-        self.ink = (max(0, BASE_INK[0] + j), max(0, BASE_INK[1] + j), min(1, BASE_INK[2] + j))
+        j = rng.uniform(-0.02, 0.02)
+        ink = self.style["ink"]
+        self.ink = (max(0, ink[0] + j), max(0, ink[1] + j), min(1, ink[2] + j))
 
     def text_width(self, text: str, size: float) -> float:
         return self.font.text_length(text, fontsize=size)
@@ -83,40 +105,45 @@ class HandWriter:
         if not text:
             return
         rng = self.rng
+        st = self.style
+        size = size * st["size_scale"]
+        jit = st["jitter_scale"]
         w = self.text_width(text, size)
         if max_w and w > max_w:
             size = max(6.0, size * max_w / w)
             w = self.text_width(text, size)
         if center:
             x = x - w / 2
-        x += rng.uniform(-1.2, 1.2)
-        y += rng.uniform(-0.8, 0.8)
+        x += rng.uniform(-1.2, 1.2) * jit
+        y += rng.uniform(-0.8, 0.8) * jit + st["baseline_bias"]
         pivot = fitz.Point(x, y)
-        matrix = fitz.Matrix(rng.uniform(-1.8, 1.8))
+        matrix = fitz.Matrix(st["slant_bias"] + rng.uniform(-1.4, 1.4))
         cx = x
         for ch in text:
             s = size * rng.uniform(0.93, 1.07)
             self.page.insert_text(
-                fitz.Point(cx, y + rng.uniform(-0.55, 0.55)), ch,
+                fitz.Point(cx, y + rng.uniform(-0.55, 0.55) * jit), ch,
                 fontsize=s, fontname="handwr", fontfile=self.fontfile,
                 color=self.ink, morph=(pivot, matrix))
-            cx += self.font.text_length(ch, fontsize=s) + rng.uniform(-0.05, 0.4)
+            cx += self.font.text_length(ch, fontsize=s) + st["spacing_bias"] + rng.uniform(-0.05, 0.35)
 
-    def tick(self, x: float, y: float, size: float = 7.0):
+    def tick(self, x: float, y: float, size: float = None):
         rng = self.rng
+        size = size or self.style["tick_size"]
         x += rng.uniform(-1.5, 1.5)
         y += rng.uniform(-1.0, 1.0)
         p1 = fitz.Point(x - size * 0.45 + rng.uniform(-0.5, 0.5), y - size * 0.05 + rng.uniform(-0.4, 0.4))
         p2 = fitz.Point(x - size * 0.08, y + size * 0.4 + rng.uniform(-0.4, 0.4))
         p3 = fitz.Point(x + size * 0.65 + rng.uniform(-0.5, 0.5), y - size * 0.55 + rng.uniform(-0.5, 0.5))
-        self.page.draw_line(p1, p2, color=self.ink, width=1.15)
-        self.page.draw_line(p2, p3, color=self.ink, width=1.15)
+        self.page.draw_line(p1, p2, color=self.ink, width=self.style["pen_width"])
+        self.page.draw_line(p2, p3, color=self.ink, width=self.style["pen_width"])
 
 
 def render_report_pdf(template: dict, report: dict, observations: list[list[str]],
                       out_path: str, seed=None):
     """Overlay handwritten-style entries onto the original template page(s)."""
     rng = random.Random(seed)
+    style = daily_style(report.get("report_date", ""))
     doc = fitz.open(template["source_pdf"])
     layouts = template.get("layouts") or ([template["layout"]] if template.get("layout") else [{}])
     rows = template.get("rows") or []
@@ -126,7 +153,7 @@ def render_report_pdf(template: dict, report: dict, observations: list[list[str]
         lay = layouts[pno] if pno < len(layouts) else {}
         if not lay:
             continue
-        hw = HandWriter(page, rng)
+        hw = HandWriter(page, rng, style)
         bounds = lay.get("bounds") or {}
 
         def at(key, text, size=10, max_w=None, dy=0):
