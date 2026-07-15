@@ -144,8 +144,10 @@ def render_report_pdf(template: dict, report: dict, observations: list[list[str]
         at("vender_code", report.get("vender_code"), 10, max_w=100)
 
         yes_x = lay.get("desc_yes_x", 592.0)
-        for y in lay.get("desc_ys", []):
-            hw.tick(yes_x, y)
+        no_x = lay.get("desc_no_x", 690.0)
+        # Description checks: row 1 YES, row 2 (heat treatment cut sample) NO, row 3 YES
+        for i, y in enumerate(lay.get("desc_ys", [])):
+            hw.tick(no_x if i == 1 else yes_x, y)
 
         cols = lay.get("cols") or []
         row_map = {r["sr"]: r["y"] for r in lay.get("rows") or []}

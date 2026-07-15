@@ -192,7 +192,7 @@ See /app/memory/test_credentials.md (admin/5@Sohangso, dispatch/5@Grewal)
 - Testing: full E2E via curl in TEST mode (blocked run → generate → auto-attach → ASN Completed ASN26486721 → "Uploaded to Portal") + testing agent iteration_16 frontend 100% + self-tested "+ PDI" generate flow in browser (PDI-0014)
 
 ## Implemented — Iteration 24 (July 2026): PDI tick placement per user reference
-- Description section: all 3 rows ticked YES (confirmed by user)
+- Description section: row 1 YES, row 2 ("Heat treatment cut sample enclosed") NO, row 3 YES (final user correction)
 - NOTE section: "Lot segregated for 'X' marked dimension" → NO (✓); "Gauges are available & calibrated" → YES (✓)
 - page_layout now captures note_no anchors; render logic updated; migrated layouts for all 121 templates + 128 revision snapshots so every new/regenerated PDI follows the pattern (verified visually on PDI-0014)
 
