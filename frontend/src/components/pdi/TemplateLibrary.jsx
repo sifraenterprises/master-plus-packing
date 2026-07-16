@@ -14,6 +14,8 @@ import TemplateEditorDialog from "./TemplateEditorDialog";
 import TemplatePreviewDialog from "./TemplatePreviewDialog";
 import UploadTemplateDialog from "./UploadTemplateDialog";
 import RevisionsDialog from "./RevisionsDialog";
+import HealthBar from "./HealthBar";
+import IntegrityDialog from "./IntegrityDialog";
 
 const fmt = (iso) => (iso || "").slice(0, 10).split("-").reverse().join(".");
 
@@ -22,6 +24,9 @@ export default function TemplateLibrary() {
   const isAdmin = user?.role === "admin";
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [flag, setFlag] = useState("");
+  const [health, setHealth] = useState(null);
+  const [integrityOpen, setIntegrityOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [data, setData] = useState({ total: 0, items: [] });
   const [importState, setImportState] = useState(null);
@@ -41,9 +46,13 @@ export default function TemplateLibrary() {
   const reocrPollRef = useRef(null);
 
   const load = useCallback(() => {
-    api.get("/pdi/templates", { params: { q, status: statusFilter === "all" ? "" : statusFilter, page, limit: 25 } })
+    api.get("/pdi/templates", { params: { q, status: statusFilter === "all" ? "" : statusFilter, flag, page, limit: 25 } })
       .then((r) => setData(r.data)).catch((err) => toast.error(apiError(err)));
-  }, [q, statusFilter, page]);
+  }, [q, statusFilter, flag, page]);
+
+  const loadHealth = useCallback(() => {
+    api.get("/pdi/templates/health").then((r) => setHealth(r.data)).catch(() => {});
+  }, []);
 
   useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t); }, [load]);
 
@@ -54,9 +63,10 @@ export default function TemplateLibrary() {
         clearInterval(pollRef.current);
         pollRef.current = null;
         load();
+        loadHealth();
       }
     }).catch(() => {});
-  }, [load]);
+  }, [load, loadHealth]);
 
   const pollReocr = useCallback(() => {
     api.get("/pdi/templates/reocr-status").then((r) => {
@@ -65,13 +75,15 @@ export default function TemplateLibrary() {
         clearInterval(reocrPollRef.current);
         reocrPollRef.current = null;
         load();
+        loadHealth();
         if (r.data.finished_at) toast.success(`Re-OCR finished: ${r.data.updated}/${r.data.total} updated${r.data.errors?.length ? `, ${r.data.errors.length} errors` : ""}`);
       }
     }).catch(() => {});
-  }, [load]);
+  }, [load, loadHealth]);
 
   useEffect(() => {
     pollStatus();
+    loadHealth();
     api.get("/pdi/templates/reocr-status").then((r) => {
       setReocrState(r.data);
       if (r.data.running) reocrPollRef.current = setInterval(pollReocr, 3000);
@@ -95,6 +107,7 @@ export default function TemplateLibrary() {
       await api.put(`/pdi/templates/${t.id}`, { status: next });
       toast.success(`Template ${next === "active" ? "activated" : "deactivated"}`);
       load();
+      loadHealth();
     } catch (err) { toast.error(apiError(err)); }
   };
 
@@ -108,6 +121,7 @@ export default function TemplateLibrary() {
       await api.delete(`/pdi/templates/${t.id}`);
       toast.success("Template permanently deleted");
       load();
+      loadHealth();
       pollStatus();
     } catch (err) { toast.error(apiError(err)); }
   };
@@ -117,6 +131,7 @@ export default function TemplateLibrary() {
       const r = await api.post(`/pdi/templates/${t.id}/duplicate`);
       toast.success(`Duplicated as "${r.data.part_name}" — set its item code via Edit`);
       load();
+      loadHealth();
     } catch (err) { toast.error(apiError(err)); }
   };
 
@@ -179,6 +194,7 @@ export default function TemplateLibrary() {
       toast.success(`Done — ${d.activated || 0} activated, ${d.deactivated || 0} deactivated, ${d.deleted || 0} deleted${d.skipped ? `, ${d.skipped} skipped` : ""}`);
       setSelected(new Set());
       load();
+      loadHealth();
       pollStatus();
     } catch (err) { toast.error(apiError(err)); }
     finally { setBulkBusy(false); }
@@ -222,6 +238,7 @@ export default function TemplateLibrary() {
       toast.success(`Import complete — ${d.imported} new, ${d.updated} updated (merged), ${d.skipped} skipped`);
       if (d.errors?.length) toast.warning(`${d.errors.length} warning(s): ${d.errors[0]}`);
       load();
+      loadHealth();
       pollStatus();
     } catch (err) { toast.error(apiError(err)); }
     finally { setImporting(false); }
@@ -235,6 +252,9 @@ export default function TemplateLibrary() {
 
   return (
     <div className="space-y-4" data-testid="pdi-template-library">
+      <HealthBar health={health} flag={flag} status={statusFilter}
+                 onFlag={(f) => { setFlag(f); setPage(1); }}
+                 onStatus={(s) => { setStatusFilter(s); setFlag(""); setPage(1); }} />
       <input ref={replaceFileRef} type="file" accept="application/pdf" className="hidden" onChange={onReplaceFile} />
       <input ref={importFileRef} type="file" accept=".zip" className="hidden" onChange={onImportFile} data-testid="pdi-import-library-input" />
       <div className="flex flex-wrap items-center gap-2">
@@ -255,6 +275,9 @@ export default function TemplateLibrary() {
         <Badge variant="outline" className="rounded-sm text-[10px] h-8 px-3 flex items-center" data-testid="pdi-library-total">
           {data.total} templates
         </Badge>
+        <Button size="sm" variant="secondary" onClick={() => setIntegrityOpen(true)} data-testid="pdi-integrity-btn" className="rounded-sm h-8 gap-1.5">
+          Integrity Report
+        </Button>
         {isAdmin && (
           <>
             <Button size="sm" onClick={() => setUploadOpen(true)} data-testid="pdi-upload-template-btn" className="rounded-sm h-8 gap-1.5">
@@ -384,7 +407,8 @@ export default function TemplateLibrary() {
                               onClose={() => setReplacing(null)}
                               onSaved={() => { setReplacing(null); load(); }} />
       )}
-      <UploadTemplateDialog open={uploadOpen} onClose={() => setUploadOpen(false)} onSaved={() => { load(); pollStatus(); }} />
+      <UploadTemplateDialog open={uploadOpen} onClose={() => setUploadOpen(false)} onSaved={() => { load(); loadHealth(); pollStatus(); }} />
+      <IntegrityDialog open={integrityOpen} onClose={() => setIntegrityOpen(false)} isAdmin={isAdmin} />
     </div>
   );
 }

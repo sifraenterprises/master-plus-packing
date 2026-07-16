@@ -196,7 +196,7 @@ async def create_template(payload: PdiTemplateCreate, user: dict = Depends(requi
 
 
 @router.get("/templates")
-async def list_templates(q: str = "", status: str = "", page: int = 1, limit: int = 25,
+async def list_templates(q: str = "", status: str = "", flag: str = "", page: int = 1, limit: int = 25,
                          user: dict = Depends(get_current_user)):
     query = {}
     if q.strip():
@@ -205,6 +205,9 @@ async def list_templates(q: str = "", status: str = "", page: int = 1, limit: in
                         {"mapped_parts": rx}, {"customer": rx}]
     if status in ("active", "inactive"):
         query["status"] = status
+    if flag in HEALTH_FLAGS:
+        h = await _compute_health()
+        query["_id"] = {"$in": [ObjectId(t) for t in h["flags"][flag]]}
     total = await db.pdi_master_library.count_documents(query)
     docs = await db.pdi_master_library.find(query, {"layouts": 0}).sort("page_number", 1) \
         .skip((page - 1) * limit).limit(limit).to_list(limit)
@@ -216,6 +219,122 @@ async def list_templates(q: str = "", status: str = "", page: int = 1, limit: in
 
 reocr_state = {"running": False, "total": 0, "processed": 0, "updated": 0,
                "errors": [], "started_at": None, "finished_at": None}
+
+
+# ---------- Library Health & Integrity ----------
+
+HEALTH_FLAGS = ("missing_item_code", "missing_part_name", "missing_drg_no", "missing_rows",
+                "dup_item_code", "dup_name_drg", "broken_pdf", "never_used")
+
+
+async def _compute_health() -> dict:
+    from pdi_generate import resolve_source_pdf
+    docs = await db.pdi_master_library.find(
+        {}, {"item_code": 1, "part_name": 1, "drg_no": 1, "rows": 1, "status": 1,
+             "source_pdf": 1, "revision": 1}).to_list(10000)
+    used_ids = set(await db.pdi_reports.distinct("template_id"))
+    by_code, by_name_drg = {}, {}
+    flags = {f: [] for f in HEALTH_FLAGS}
+    for d in docs:
+        tid = str(d["_id"])
+        code = (d.get("item_code") or "").strip()
+        name = (d.get("part_name") or "").strip()
+        drg = (d.get("drg_no") or "").strip()
+        if not code:
+            flags["missing_item_code"].append(tid)
+        else:
+            by_code.setdefault(code, []).append(tid)
+        if not name:
+            flags["missing_part_name"].append(tid)
+        if not drg:
+            flags["missing_drg_no"].append(tid)
+        if name and drg:
+            by_name_drg.setdefault(f"{name}::{drg}", []).append(tid)
+        if not d.get("rows"):
+            flags["missing_rows"].append(tid)
+        path = resolve_source_pdf(d.get("source_pdf", ""))
+        if not path or not Path(path).exists():
+            flags["broken_pdf"].append(tid)
+        if tid not in used_ids:
+            flags["never_used"].append(tid)
+    dup_codes = {c: ids for c, ids in by_code.items() if len(ids) > 1}
+    dup_names = {k: ids for k, ids in by_name_drg.items() if len(ids) > 1}
+    flags["dup_item_code"] = [tid for ids in dup_codes.values() for tid in ids]
+    flags["dup_name_drg"] = [tid for ids in dup_names.values() for tid in ids]
+    issue_flags = [f for f in HEALTH_FLAGS if f != "never_used"]
+    issue_ids = set(tid for f in issue_flags for tid in flags[f])
+    total = len(docs)
+    last_run = await db.pdi_import_runs.find_one({}, sort=[("finished_at", -1)])
+    return {
+        "total": total,
+        "active": sum(1 for d in docs if d.get("status") == "active"),
+        "inactive": sum(1 for d in docs if d.get("status") != "active"),
+        "counts": {f: len(flags[f]) for f in HEALTH_FLAGS},
+        "flags": flags,
+        "duplicate_item_codes": sorted(dup_codes.keys())[:50],
+        "duplicate_name_drg": sorted(dup_names.keys())[:50],
+        "last_ocr_run": (last_run or {}).get("finished_at") or "",
+        "last_ocr_errors": len((last_run or {}).get("errors") or []),
+        "health_score": round(100 * (total - len(issue_ids)) / total, 1) if total else 100.0,
+    }
+
+
+@router.get("/templates/health")
+async def templates_health(user: dict = Depends(get_current_user)):
+    h = await _compute_health()
+    h.pop("flags", None)
+    return h
+
+
+async def run_integrity_check(triggered_by: str, trigger: str) -> dict:
+    h = await _compute_health()
+    orphan_reports = await db.pdi_reports.count_documents(
+        {"template_id": {"$nin": [str(d["_id"]) async for d in
+                                  db.pdi_master_library.find({}, {"_id": 1})], "$ne": ""}})
+    rev_conflicts = 0
+    async for t in db.pdi_master_library.find({}, {"revision": 1}):
+        snap = await db.pdi_template_revisions.find_one(
+            {"template_id": str(t["_id"]), "revision": t.get("revision", 1)}, {"_id": 1})
+        if not snap:
+            rev_conflicts += 1
+    report = {
+        "trigger": trigger, "triggered_by": triggered_by,
+        "created_at": utcnow().isoformat(),
+        "total": h["total"], "health_score": h["health_score"],
+        "issues": {
+            "missing_item_code": h["counts"]["missing_item_code"],
+            "missing_part_name": h["counts"]["missing_part_name"],
+            "missing_drg_no": h["counts"]["missing_drg_no"],
+            "missing_rows": h["counts"]["missing_rows"],
+            "duplicate_item_codes": h["counts"]["dup_item_code"],
+            "duplicate_name_drg": h["counts"]["dup_name_drg"],
+            "broken_pdf_links": h["counts"]["broken_pdf"],
+            "revision_conflicts": rev_conflicts,
+            "orphan_reports": orphan_reports,
+        },
+        "duplicate_item_codes": h["duplicate_item_codes"],
+        "duplicate_name_drg": h["duplicate_name_drg"],
+        "last_ocr_run": h["last_ocr_run"],
+        "last_ocr_errors": h["last_ocr_errors"],
+    }
+    total_issues = sum(report["issues"].values())
+    report["status"] = "clean" if total_issues == 0 else "issues_found"
+    await db.pdi_integrity_reports.insert_one({**report})
+    report.pop("_id", None)
+    await log_activity(triggered_by, "pdi_integrity_check",
+                       f"{trigger} — score {report['health_score']}% · {total_issues} issue(s)", "pdi")
+    return report
+
+
+@router.post("/templates/integrity-check")
+async def integrity_check(user: dict = Depends(require_admin)):
+    return await run_integrity_check(user["username"], "manual")
+
+
+@router.get("/templates/integrity-reports")
+async def integrity_reports(limit: int = 10, user: dict = Depends(get_current_user)):
+    docs = await db.pdi_integrity_reports.find({}, {"_id": 0}).sort("created_at", -1).to_list(min(limit, 50))
+    return docs
 
 
 @router.post("/templates/bulk")
@@ -304,6 +423,7 @@ async def _run_bulk_reocr(ids: list, username: str):
     reocr_state["finished_at"] = utcnow().isoformat()
     await log_activity(username, "pdi_bulk_reocr_finished",
                        f"{reocr_state['updated']}/{reocr_state['total']} updated, {len(reocr_state['errors'])} errors", "pdi")
+    await run_integrity_check(username, "bulk_reocr")
 
 
 @router.get("/templates/export")
@@ -408,6 +528,7 @@ async def import_templates(file: UploadFile = File(...), user: dict = Depends(re
             errors.append(f"{t.get('item_code') or t.get('part_name')}: {str(e)[:100]}")
     await log_activity(user["username"], "pdi_library_imported",
                        f"{imported} new, {updated} updated, {skipped} skipped", "pdi")
+    _bg(run_integrity_check(user["username"], "import"))
     return {"imported": imported, "updated": updated, "skipped": skipped, "errors": errors[:20]}
 
 
@@ -482,10 +603,12 @@ async def update_template(template_id: str, payload: PdiTemplateUpdate, user: di
     if functional_change:
         updates["revision"] = doc.get("revision", 1) + 1
     updates["updated_at"] = utcnow().isoformat()
+    updates["updated_by"] = user["username"]
     await db.pdi_master_library.update_one({"_id": doc["_id"]}, {"$set": updates})
     saved = await db.pdi_master_library.find_one({"_id": doc["_id"]})
     if functional_change:
         await save_template_revision(saved, user["username"])
+        _bg(run_integrity_check(user["username"], "template_update"))
     await log_activity(user["username"], "pdi_template_edited",
                        f"{saved.get('part_name')} · rev {saved.get('revision')}", "pdi")
     return PdiTemplate.from_mongo(saved).model_dump(exclude={"layouts"})
