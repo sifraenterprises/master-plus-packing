@@ -4,7 +4,7 @@ import asyncio
 import logging
 from pathlib import Path
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
 from fastapi.responses import FileResponse, Response
 from pymongo import ReturnDocument
 from bson import ObjectId
@@ -38,15 +38,17 @@ def _oid(value: str, label: str) -> ObjectId:
 # ---------- Master import (120-page master) ----------
 
 @router.post("/import-master")
-async def trigger_import(file: UploadFile = File(None), user: dict = Depends(require_admin)):
+async def trigger_import(file: UploadFile = File(None), page_start: int = Form(None),
+                         page_end: int = Form(None), user: dict = Depends(require_admin)):
     if run_state["running"]:
         raise HTTPException(status_code=409, detail="An import is already running")
     if file is not None:
         MASTER_PDF.write_bytes(await file.read())
     if not MASTER_PDF.exists():
         raise HTTPException(status_code=404, detail="Master PDI PDF not found on server. Please upload the PDF.")
-    _bg(import_master_pdf(triggered_by=user["username"]))
-    await log_activity(user["username"], "pdi_import_started", "PDI master library import", "pdi")
+    _bg(import_master_pdf(triggered_by=user["username"], page_start=page_start, page_end=page_end))
+    rng = f" (pages {page_start or 1}-{page_end or 'end'})" if (page_start or page_end) else ""
+    await log_activity(user["username"], "pdi_import_started", f"PDI master library import{rng}", "pdi")
     return {"status": "started"}
 
 

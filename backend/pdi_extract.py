@@ -58,10 +58,11 @@ def _parse_json(raw: str) -> dict:
     return json.loads(match.group(0))
 
 
-def _find(words, text, ymin=0.0, ymax=612.0, xmin=0.0, xmax=792.0, nth=1):
+def _find(words, text, ymin=0.0, ymax=612.0, xmin=0.0, xmax=792.0, nth=1, prefix=False):
     n = 0
     for w in words:
-        if w[4] == text and ymin <= w[1] <= ymax and xmin <= w[0] <= xmax:
+        match = w[4].startswith(text) if prefix else w[4] == text
+        if match and ymin <= w[1] <= ymax and xmin <= w[0] <= xmax:
             n += 1
             if n == nth:
                 return w
@@ -105,20 +106,27 @@ def page_layout(page) -> dict:
         if w:
             lay[key] = [round(w[2] + dx, 1), round((w[1] + w[3]) / 2, 1)]
 
-    date_w = _find(words, "DATE", ymin=40, ymax=64)
-    anchor("report_no", _find(words, "NO.", ymin=40, ymax=64), 10)
+    # Header line 1 (REPORT NO. / DATE) — anchor-driven so both form variants work
+    date_w = _find(words, "DATE", ymin=10, ymax=band)
+    h1y = date_w[1] if date_w else 48.0
+    anchor("report_no", _find(words, "NO.", ymin=h1y - 4, ymax=h1y + 6), 10)
     anchor("date", date_w, 12)
-    lot2 = _find(words, "Lot", ymin=58, ymax=80, nth=2)
-    challan_w = _find(words, "Challan", ymin=58, ymax=80)
-    min_w = _find(words, "MIN.", ymin=58, ymax=80)
-    vender_w = _find(words, "VENDER", ymin=58, ymax=80)
-    anchor("lot_size", _find(words, "Size", ymin=58, ymax=80), 10)
+    # Header line 2 (Lot Size / Lot No / Challan / MIN / VENDER CODE)
+    challan_w = _find(words, "Challan", ymin=h1y, ymax=band)
+    h2y = challan_w[1] if challan_w else h1y + 15
+    lot2 = _find(words, "Lot", ymin=h2y - 4, ymax=h2y + 6, nth=2)
+    min_w = _find(words, "MIN.", ymin=h2y - 4, ymax=h2y + 6)
+    vender_w = _find(words, "VENDER", ymin=h2y - 4, ymax=h2y + 6)
+    anchor("lot_size", _find(words, "Size", ymin=h2y - 4, ymax=h2y + 6), 10)
     if lot2:
-        no_w = _find(words, "No", ymin=58, ymax=80, xmin=lot2[2])
+        no_w = _find(words, "No", ymin=h2y - 4, ymax=h2y + 6, xmin=lot2[2])
         anchor("lot_no", no_w or lot2, 10)
-    anchor("challan", _find(words, "/Dt.", ymin=58, ymax=80), 8)
-    anchor("min_no", _find(words, "/Dt.", ymin=58, ymax=80, nth=2), 8)
-    anchor("vender_code", _find(words, "CODE", ymin=58, ymax=80), 10)
+    anchor("challan", _find(words, "/Dt.", ymin=h2y - 4, ymax=h2y + 6), 8)
+    anchor("min_no", _find(words, "/Dt.", ymin=h2y - 4, ymax=h2y + 6, nth=2), 8)
+    code_w = _find(words, "CODE", ymin=h2y - 4, ymax=h2y + 6)
+    if code_w:
+        anchor("vender_code", code_w, 10)
+    # else: CODE-xxxx pre-printed on the form — nothing to write
 
     def bound(key, next_label):
         a = lay.get(key)
@@ -130,13 +138,13 @@ def page_layout(page) -> dict:
     bound("challan", min_w)
     bound("min_no", vender_w)
 
-    yes = _find(words, "YES", ymin=80, ymax=105)
-    no = _find(words, "NO", ymin=80, ymax=105, xmin=(yes[2] if yes else 600))
-    lay["desc_yes_x"] = round((yes[0] + yes[2]) / 2, 1) if yes else 592.0
-    lay["desc_no_x"] = round((no[0] + no[2]) / 2, 1) if no else 690.0
+    yes = _find(words, "YES", ymin=h2y + 4, ymax=band, xmin=430)
+    no = _find(words, "NO", ymin=h2y + 4, ymax=band, xmin=(yes[2] if yes else 600))
+    lay["desc_yes_x"] = round(yes[0] + 1, 1) if yes else 592.0
+    lay["desc_no_x"] = round(no[0] + 14, 1) if no else 690.0
     desc_ys = []
     for label in ("1.", "2.", "3."):
-        w = _find(words, label, ymin=92, ymax=140, xmax=80)
+        w = _find(words, label, ymin=h2y + 4, ymax=band, xmax=80)
         if w:
             desc_ys.append(round((w[1] + w[3]) / 2, 1))
     if len(desc_ys) == 0:
@@ -146,19 +154,20 @@ def page_layout(page) -> dict:
         desc_ys.insert(0, round(desc_ys[0] - spacing, 1))
     lay["desc_ys"] = desc_ys[:3]
 
-    insp = _find(words, "INSPECTED", ymin=440, ymax=500)
-    appr = _find(words, "APPROVED", ymin=440, ymax=500)
+    insp = _find(words, "INSPECTED", ymin=420, ymax=520)
+    appr = _find(words, "APPROVED", ymin=420, ymax=520)
     lay["inspected_by"] = [round(insp[2] + 30, 1), round((insp[1] + insp[3]) / 2, 1)] if insp else [220.0, 484.0]
     lay["approved_by"] = [round(appr[2] + 30, 1), round((appr[1] + appr[3]) / 2, 1)] if appr else [700.0, 484.0]
+    iy = insp[1] if insp else 484.0
 
-    anchor("parameters", _find(words, "Parameters", ymin=500, ymax=560), 20)
-    anchor("id_mark", _find(words, "Location", ymin=500, ymax=575), 20)
+    anchor("parameters", _find(words, "Parameters", ymin=iy, ymax=iy + 76), 20)
+    anchor("id_mark", _find(words, "Location", ymin=iy, ymax=iy + 91), 20)
     note_yes, note_no = [], []
     for nth in (1, 2):
-        w = _find(words, "YES", ymin=520, ymax=600, nth=nth)
+        w = _find(words, "YES", ymin=iy + 20, ymax=iy + 120, nth=nth)
         if w:
             note_yes.append([round(w[2] + 14, 1), round((w[1] + w[3]) / 2, 1)])
-        w = _find(words, "NO", ymin=520, ymax=600, nth=nth)
+        w = _find(words, "NO", ymin=iy + 20, ymax=iy + 120, nth=nth)
         if w:
             note_no.append([round(w[2] + 14, 1), round((w[1] + w[3]) / 2, 1)])
     lay["note_yes"] = note_yes
@@ -231,21 +240,24 @@ async def save_template_revision(template_doc: dict, saved_by: str):
         upsert=True)
 
 
-async def import_master_pdf(pdf_path: str = None, triggered_by: str = "system"):
+async def import_master_pdf(pdf_path: str = None, triggered_by: str = "system",
+                            page_start: int = None, page_end: int = None):
     path = Path(pdf_path) if pdf_path else MASTER_PDF
     if not path.exists():
         run_state.update({"running": False, "errors": [f"Master PDF not found at {path}"]})
         return
     reader = PdfReader(str(path))
     total = len(reader.pages)
-    run_state.update({"running": True, "total": total, "processed": 0, "imported": 0,
+    s = max(0, (page_start or 1) - 1)
+    e = min(total, page_end or total)
+    run_state.update({"running": True, "total": e - s, "processed": 0, "imported": 0,
                       "errors": [], "started_at": utcnow().isoformat(), "finished_at": None})
     doc = fitz.open(str(path))
-    layouts = {i + 1: page_layout(doc[i]) for i in range(total)}
+    layouts = {i + 1: page_layout(doc[i]) for i in range(s, e)}
     doc.close()
 
     sem = asyncio.Semaphore(3)
-    chunks = [(s, min(s + CHUNK_PAGES, total)) for s in range(0, total, CHUNK_PAGES)]
+    chunks = [(st, min(st + CHUNK_PAGES, e)) for st in range(s, e, CHUNK_PAGES)]
 
     async def process(start, end):
         async with sem:
@@ -293,7 +305,7 @@ async def import_master_pdf(pdf_path: str = None, triggered_by: str = "system"):
     await db.pdi_import_runs.insert_one({**{k: v for k, v in run_state.items()},
                                          "triggered_by": triggered_by})
     logger.info("PDI import finished: %s/%s imported, %s errors",
-                run_state["imported"], total, len(run_state["errors"]))
+                run_state["imported"], run_state["total"], len(run_state["errors"]))
 
 
 # ---------- Custom template uploads (data-driven, unlimited templates) ----------
