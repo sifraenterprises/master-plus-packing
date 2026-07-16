@@ -265,7 +265,10 @@ export default function DispatchList() {
         <PdiPanel record={pdiRec} onClose={() => setPdiRec(null)}
                   onChanged={async () => {
                     await load(page);
-                    setPdiRec(null);
+                    try {
+                      const { data } = await api.get(`/master-dispatch/${pdiRec.id}`);
+                      setPdiRec(data);
+                    } catch { setPdiRec(null); }
                   }} />
       )}
 
