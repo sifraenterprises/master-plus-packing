@@ -92,6 +92,18 @@ export default function TemplateLibrary() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const cleanupDuplicates = async () => {
+    if (!window.confirm("Resolve duplicate item codes automatically?\n\n• The NEWEST template per item code stays Active\n• Older duplicates are marked Inactive (never deleted — full history preserved)\n\nProceed?")) return;
+    setBulkBusy(true);
+    try {
+      const r = await api.post("/pdi/templates/cleanup-duplicates");
+      toast.success(`Duplicate cleanup done — ${r.data.duplicate_groups} group(s) resolved, ${r.data.deactivated} old template(s) deactivated`);
+      load();
+      loadHealth();
+    } catch (err) { toast.error(apiError(err)); }
+    finally { setBulkBusy(false); }
+  };
+
   const startImport = async () => {
     if (!window.confirm("Re-run OCR import of the master PDF via Gemini? Existing templates for the same pages get a new revision.")) return;
     try {
@@ -278,6 +290,12 @@ export default function TemplateLibrary() {
         <Button size="sm" variant="secondary" onClick={() => setIntegrityOpen(true)} data-testid="pdi-integrity-btn" className="rounded-sm h-8 gap-1.5">
           Integrity Report
         </Button>
+        {isAdmin && (health?.counts?.dup_item_code_active ?? 0) > 0 && (
+          <Button size="sm" variant="secondary" onClick={cleanupDuplicates} disabled={bulkBusy} data-testid="pdi-cleanup-duplicates-btn"
+                  className="rounded-sm h-8 gap-1.5 text-amber-500 border border-amber-500/40">
+            Clean Up {health.counts.dup_item_code_active} Duplicates
+          </Button>
+        )}
         {isAdmin && (
           <>
             <Button size="sm" onClick={() => setUploadOpen(true)} data-testid="pdi-upload-template-btn" className="rounded-sm h-8 gap-1.5">

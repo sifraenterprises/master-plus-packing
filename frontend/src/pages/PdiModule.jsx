@@ -6,7 +6,10 @@ import ReportsHistory from "@/components/pdi/ReportsHistory";
 import TemplateLibrary from "@/components/pdi/TemplateLibrary";
 
 export default function PdiModule() {
-  const [tab, setTab] = useState("generate");
+  const [tab, setTab] = useState(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    return ["generate", "reports", "library"].includes(t) ? t : "generate";
+  });
   return (
     <div className="space-y-6" data-testid="pdi-module">
       <div>

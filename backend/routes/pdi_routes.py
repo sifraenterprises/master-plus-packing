@@ -224,7 +224,7 @@ reocr_state = {"running": False, "total": 0, "processed": 0, "updated": 0,
 # ---------- Library Health & Integrity ----------
 
 HEALTH_FLAGS = ("missing_item_code", "missing_part_name", "missing_drg_no", "missing_rows",
-                "dup_item_code", "dup_name_drg", "broken_pdf", "never_used")
+                "dup_item_code", "dup_item_code_active", "dup_name_drg", "broken_pdf", "never_used")
 
 
 async def _compute_health() -> dict:
@@ -233,10 +233,14 @@ async def _compute_health() -> dict:
         {}, {"item_code": 1, "part_name": 1, "drg_no": 1, "rows": 1, "status": 1,
              "source_pdf": 1, "revision": 1}).to_list(10000)
     used_ids = set(await db.pdi_reports.distinct("template_id"))
-    by_code, by_name_drg = {}, {}
+    by_code, by_code_active, by_name_drg = {}, {}, {}
     flags = {f: [] for f in HEALTH_FLAGS}
+    active_ids = set()
     for d in docs:
         tid = str(d["_id"])
+        is_active = d.get("status") == "active"
+        if is_active:
+            active_ids.add(tid)
         code = (d.get("item_code") or "").strip()
         name = (d.get("part_name") or "").strip()
         drg = (d.get("drg_no") or "").strip()
@@ -244,6 +248,8 @@ async def _compute_health() -> dict:
             flags["missing_item_code"].append(tid)
         else:
             by_code.setdefault(code, []).append(tid)
+            if is_active:
+                by_code_active.setdefault(code, []).append(tid)
         if not name:
             flags["missing_part_name"].append(tid)
         if not drg:
@@ -260,22 +266,28 @@ async def _compute_health() -> dict:
     dup_codes = {c: ids for c, ids in by_code.items() if len(ids) > 1}
     dup_names = {k: ids for k, ids in by_name_drg.items() if len(ids) > 1}
     flags["dup_item_code"] = [tid for ids in dup_codes.values() for tid in ids]
+    flags["dup_item_code_active"] = [tid for ids in by_code_active.values() if len(ids) > 1 for tid in ids]
     flags["dup_name_drg"] = [tid for ids in dup_names.values() for tid in ids]
-    issue_flags = [f for f in HEALTH_FLAGS if f != "never_used"]
-    issue_ids = set(tid for f in issue_flags for tid in flags[f])
+    # Score reflects quality of the ACTIVE library only
+    score_flags = ("missing_item_code", "missing_part_name", "missing_drg_no",
+                   "missing_rows", "dup_item_code_active", "broken_pdf")
+    issue_ids = set(tid for f in score_flags for tid in flags[f]) & active_ids
     total = len(docs)
+    active_total = len(active_ids)
     last_run = await db.pdi_import_runs.find_one({}, sort=[("finished_at", -1)])
+    last_check = await db.pdi_integrity_reports.find_one({}, {"_id": 0, "created_at": 1}, sort=[("created_at", -1)])
     return {
         "total": total,
-        "active": sum(1 for d in docs if d.get("status") == "active"),
-        "inactive": sum(1 for d in docs if d.get("status") != "active"),
+        "active": active_total,
+        "inactive": total - active_total,
         "counts": {f: len(flags[f]) for f in HEALTH_FLAGS},
         "flags": flags,
         "duplicate_item_codes": sorted(dup_codes.keys())[:50],
         "duplicate_name_drg": sorted(dup_names.keys())[:50],
         "last_ocr_run": (last_run or {}).get("finished_at") or "",
         "last_ocr_errors": len((last_run or {}).get("errors") or []),
-        "health_score": round(100 * (total - len(issue_ids)) / total, 1) if total else 100.0,
+        "last_integrity_check": (last_check or {}).get("created_at", ""),
+        "health_score": round(100 * (active_total - len(issue_ids)) / active_total, 1) if active_total else 100.0,
     }
 
 
@@ -307,6 +319,7 @@ async def run_integrity_check(triggered_by: str, trigger: str) -> dict:
             "missing_drg_no": h["counts"]["missing_drg_no"],
             "missing_rows": h["counts"]["missing_rows"],
             "duplicate_item_codes": h["counts"]["dup_item_code"],
+            "duplicate_active_item_codes": h["counts"]["dup_item_code_active"],
             "duplicate_name_drg": h["counts"]["dup_name_drg"],
             "broken_pdf_links": h["counts"]["broken_pdf"],
             "revision_conflicts": rev_conflicts,
@@ -335,6 +348,33 @@ async def integrity_check(user: dict = Depends(require_admin)):
 async def integrity_reports(limit: int = 10, user: dict = Depends(get_current_user)):
     docs = await db.pdi_integrity_reports.find({}, {"_id": 0}).sort("created_at", -1).to_list(min(limit, 50))
     return docs
+
+
+@router.post("/templates/cleanup-duplicates")
+async def cleanup_duplicates(user: dict = Depends(require_admin)):
+    """Keep newest template (highest page number) active per duplicate item code; deactivate the rest. Never deletes."""
+    docs = await db.pdi_master_library.find(
+        {"status": "active", "item_code": {"$nin": ["", None]}},
+        {"item_code": 1, "page_number": 1, "part_name": 1}).to_list(10000)
+    groups = {}
+    for d in docs:
+        groups.setdefault(d["item_code"].strip(), []).append(d)
+    now = utcnow().isoformat()
+    deactivated, kept = 0, 0
+    for code, items in groups.items():
+        if len(items) < 2:
+            continue
+        items.sort(key=lambda x: x.get("page_number", 0), reverse=True)
+        kept += 1
+        old_ids = [d["_id"] for d in items[1:]]
+        r = await db.pdi_master_library.update_many(
+            {"_id": {"$in": old_ids}},
+            {"$set": {"status": "inactive", "updated_at": now, "updated_by": user["username"]}})
+        deactivated += r.modified_count
+    await log_activity(user["username"], "pdi_duplicate_cleanup",
+                       f"{kept} duplicate group(s) resolved — kept newest active, {deactivated} old template(s) deactivated (preserved)", "pdi")
+    _bg(run_integrity_check(user["username"], "duplicate_cleanup"))
+    return {"duplicate_groups": kept, "deactivated": deactivated}
 
 
 @router.post("/templates/bulk")

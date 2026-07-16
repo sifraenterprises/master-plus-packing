@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import MDStats from "@/components/md/MDStats";
+import HealthWidget from "@/components/pdi/HealthWidget";
 
 const MODULE_ICONS = { Package, Truck, Receipt, Handshake, SealCheck };
 
@@ -74,6 +75,8 @@ export default function DashboardHome() {
           </div>
         ))}
       </div>
+
+      {user?.role === "admin" && <HealthWidget />}
 
       <h2 className="text-lg font-bold mb-4">Master Dispatch Overview</h2>
       <div className="mb-10">
