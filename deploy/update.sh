@@ -14,8 +14,14 @@ build_and_restart() {
 
   echo "==> Frontend build"
   cd "$APP_DIR/frontend"
-  npm install
-  npm run build
+  if [[ -f package-lock.json ]]; then
+    npm ci
+  else
+    npm install
+  fi
+  echo "==> Frontend lint"
+  npm run lint
+  NODE_OPTIONS=--max-old-space-size=2048 CI=true GENERATE_SOURCEMAP=false npm run build
 
   echo "==> Restarting services"
   $SUDO systemctl restart grewal-api
@@ -36,6 +42,9 @@ echo "==> Current commit: $PREV_COMMIT"
 
 echo "==> Pulling latest code"
 git pull
+
+echo "==> Preflight gate"
+bash "$SCRIPT_DIR/preflight.sh"
 
 build_and_restart
 

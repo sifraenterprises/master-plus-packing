@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { Outlet, NavLink, useNavigate, Link, useLocation } from "react-router-dom";
 import {
-  Wrench, SquaresFour, Truck, Package, Receipt, Handshake, SealCheck,
+  Wrench, SquaresFour, Truck, Package, SealCheck,
   ChartBar, Gear, SignOut, List, X, ClipboardText, Stack, CaretDown,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
@@ -78,6 +78,16 @@ function NavGroup({ item, onNavigate }) {
 }
 
 export default function PortalLayout() {
+  const [env, setEnv] = useState(null);
+
+  useEffect(() => {
+    const fetchEnv = () => api.get("/admin/environment").then((r) => setEnv(r.data)).catch(() => {});
+    fetchEnv();
+    const t = setInterval(fetchEnv, 60000);
+    window.addEventListener("env-changed", fetchEnv);
+    return () => { clearInterval(t); window.removeEventListener("env-changed", fetchEnv); };
+  }, []);
+
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -172,10 +182,36 @@ export default function PortalLayout() {
           <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground hidden sm:block">
             Internal Automation Platform
           </p>
-          <p className="text-xs text-muted-foreground font-mono" data-testid="header-username">
-            {user?.username}@gew
-          </p>
+          <div className="flex items-center gap-3">
+            {env && (
+              <Badge variant="outline" data-testid="header-env-badge"
+                     className={`rounded-sm text-[10px] font-black uppercase tracking-wider ${
+                       env.mode === "live" ? "border-emerald-500/50 text-emerald-500"
+                       : env.mode === "maintenance" ? "border-sky-500/50 text-sky-500"
+                       : "border-amber-500/50 text-amber-500"}`}>
+                {env.mode === "live" ? "LIVE MODE" : env.mode === "maintenance" ? "MAINTENANCE" : "TEST MODE"}
+              </Badge>
+            )}
+            <p className="text-xs text-muted-foreground font-mono" data-testid="header-username">
+              {user?.username}@gew
+            </p>
+          </div>
         </header>
+        {env?.mode === "test" && (
+          <div className="bg-amber-500/10 border-b border-amber-500/30 text-amber-500 text-[11px] font-bold uppercase tracking-widest text-center py-1.5" data-testid="test-mode-banner">
+            TEST MODE — No data will be submitted to the live TAFE portal
+          </div>
+        )}
+        {env?.mode === "maintenance" && (
+          <div className="bg-sky-500/10 border-b border-sky-500/30 text-sky-500 text-[11px] font-bold uppercase tracking-widest text-center py-1.5" data-testid="maintenance-banner">
+            MAINTENANCE MODE — New portal automation is temporarily blocked
+          </div>
+        )}
+        {env?.live_automation_stopped && (
+          <div className="bg-red-500/10 border-b border-red-500/40 text-red-400 text-[11px] font-bold uppercase tracking-widest text-center py-1.5" data-testid="emergency-stop-banner">
+            EMERGENCY STOP ACTIVE — Live automation is paused by admin
+          </div>
+        )}
         <main className="flex-1 p-4 sm:p-8">
           <Outlet />
         </main>

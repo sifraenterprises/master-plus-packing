@@ -6,6 +6,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from environment import env_list_filter
 from database import db
 from models import utcnow
 from auth import get_current_user, log_activity
@@ -53,9 +54,9 @@ def _rx(v):
     return {"$regex": re.escape(v), "$options": "i"}
 
 
-def build_erp_pipeline(p: dict):
+def build_erp_pipeline(p: dict, env_filter: dict = None):
     stages = [{"$addFields": {"dispatch_date": {"$substrCP": [{"$ifNull": ["$created_at", ""]}, 0, 10]}}}]
-    pre = {}
+    pre = dict(env_filter or {})
     for param, field in (("invoice", "invoice_number"), ("customer", "customer_name"), ("vendor", "customer_code"),
                          ("plant", "plant"), ("transporter", "transporter_name"), ("vehicle", "vehicle_number"),
                          ("eway", "eway_bill_number"), ("po", "po_number"), ("part", "items.part_number"),
@@ -149,7 +150,7 @@ def _row(d: dict) -> dict:
 @router.get("/erp")
 async def erp_report(sort_by: str = "created_at", sort_dir: str = "desc", page: int = 1, page_size: int = 25,
                      user: dict = Depends(get_current_user), p: dict = Depends(erp_params)):
-    pipeline = build_erp_pipeline(p)
+    pipeline = build_erp_pipeline(p, await env_list_filter())
     sort_by = sort_by if sort_by in SORT_FIELDS else "created_at"
     page, page_size = max(1, page), min(max(1, page_size), 200)
     pipeline += [
@@ -172,7 +173,7 @@ async def erp_kpis(user: dict = Depends(get_current_user)):
         short = key.replace("_status", "")
         group[f"pending_{short}"] = {"$sum": {"$cond": [{"$ne": [f"${key}", "Completed"]}, 1, 0]}}
         group[f"completed_{short}"] = {"$sum": {"$cond": [{"$eq": [f"${key}", "Completed"]}, 1, 0]}}
-    status_agg = await db.master_dispatch.aggregate(build_erp_pipeline({}) + [{"$group": group}]).to_list(1)
+    status_agg = await db.master_dispatch.aggregate(build_erp_pipeline({}, await env_list_filter()) + [{"$group": group}]).to_list(1)
     counts = status_agg[0] if status_agg else {}
     counts.pop("_id", None)
 
@@ -256,7 +257,7 @@ async def erp_export(format: str = "excel", columns: str = "", sort_by: str = "c
     keys = [k for k in columns.split(",") if k in dict(ERP_COLUMNS)] or [k for k, _ in ERP_COLUMNS[:12]]
     labels = [dict(ERP_COLUMNS)[k] for k in keys]
     sort_by = sort_by if sort_by in SORT_FIELDS else "created_at"
-    pipeline = build_erp_pipeline(p) + [{"$sort": {sort_by: 1 if sort_dir == "asc" else -1, "_id": 1}}, {"$limit": 10000}]
+    pipeline = build_erp_pipeline(p, await env_list_filter()) + [{"$sort": {sort_by: 1 if sort_dir == "asc" else -1, "_id": 1}}, {"$limit": 10000}]
     docs = await db.master_dispatch.aggregate(pipeline).to_list(10000)
     await log_activity(user["username"], f"erp_report_export_{format}", f"{len(docs)} records", "reports")
 

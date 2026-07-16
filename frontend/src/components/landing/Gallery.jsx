@@ -5,31 +5,31 @@ const categories = [
   {
     id: "hardware",
     label: "Hardware Components",
-    img: "https://static.prod-images.emergentagent.com/jobs/57cd4c35-bafb-4207-b9bb-ffa68ba67f9a/images/5e58b44836dc0d7bb0fe7c0e0f84cbdb80cd1c20eaa6263280dc6793217982de.png",
+    img: "/images/gallery/gallery_1.png",
     desc: "Precision bar stock hardware — bolts, studs, pins, bushings and turned fasteners machined to exact OEM specifications.",
   },
   {
     id: "cnc",
     label: "CNC Components",
-    img: "https://static.prod-images.emergentagent.com/jobs/57cd4c35-bafb-4207-b9bb-ffa68ba67f9a/images/1730b2321282e4ea4726f87a12f3d84e28c3036f205ee27e0f5a575de5575ac2.png",
+    img: "/images/gallery/gallery_2.png",
     desc: "High-precision CNC turned parts produced on LMW Smart Turn and Macpower machines with tight tolerances.",
   },
   {
     id: "sheet-metal",
     label: "Sheet Metal Parts",
-    img: "https://static.prod-images.emergentagent.com/jobs/57cd4c35-bafb-4207-b9bb-ffa68ba67f9a/images/3b6da65ec1e232e63be7c5152be47064bc71a5502a0b1beb1fbc822066da2f03.png",
+    img: "/images/gallery/gallery_3.png",
     desc: "Pressed and stamped sheet metal components — brackets, clamps and stampings produced on power presses.",
   },
   {
     id: "assemblies",
     label: "Assemblies",
-    img: "https://static.prod-images.emergentagent.com/jobs/57cd4c35-bafb-4207-b9bb-ffa68ba67f9a/images/07cc61e794656d8139c101fb09f6035ab1a5b100f9070f3b1c267c6c84300d4e.png",
+    img: "/images/gallery/gallery_4.png",
     desc: "Welded and fabricated assemblies and sub-assemblies for tractor, railway and engineering applications.",
   },
   {
     id: "plastic",
     label: "Plastic Molded Parts",
-    img: "https://static.prod-images.emergentagent.com/jobs/57cd4c35-bafb-4207-b9bb-ffa68ba67f9a/images/1d239fdb73966988bdda30974fecde9589d803fa9e7b20d2c7868e05ae7c0c1a.png",
+    img: "/images/gallery/gallery_5.png",
     desc: "Hydraulic plastic molded components — caps, knobs, housings and grommets for industrial use.",
   },
 ];

@@ -15,7 +15,7 @@ import pytest
 import requests
 from openpyxl import load_workbook
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://invoice-master-295.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("TEST_BASE_URL", "http://127.0.0.1:8001").rstrip("/")
 API = f"{BASE_URL}/api"
 PDI_PATH = "/tmp/pdi_test.pdf"
 

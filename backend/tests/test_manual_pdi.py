@@ -118,6 +118,17 @@ class TestSetActive:
         ai_report = next((r for r in reports if r["source"] == "ai"
                           and r["report_no"] == ORIGINAL_ACTIVE_REPORT_NO), None)
         manual_report = next((r for r in reports if r["source"] == "manual"), None)
+        if manual_report is None:
+            # self-provision (xdist may run this class on a fresh worker)
+            up = requests.post(f"{API}/pdi/manual-upload", headers=admin_headers,
+                               data={"master_dispatch_id": TARGET_DISPATCH_ID},
+                               files={"file": ("manual.pdf", _pdf_bytes(), "application/pdf")})
+            assert up.status_code == 200, up.text
+            created_reports.append(up.json()["id"])
+            listing = requests.get(f"{API}/pdi/dispatch/{TARGET_DISPATCH_ID}/reports",
+                                   headers=admin_headers).json()
+            reports = listing["reports"]
+            manual_report = next((r for r in reports if r["source"] == "manual"), None)
         assert ai_report and manual_report
 
         # Switch to AI

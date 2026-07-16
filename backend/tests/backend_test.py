@@ -7,7 +7,7 @@ import requests
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://dispatch-portal-27.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("TEST_BASE_URL", "http://127.0.0.1:8001").rstrip("/")
 API = f"{BASE_URL}/api"
 
 ADMIN = {"username": "admin", "password": "5@Sohangso"}
@@ -234,7 +234,7 @@ class TestModules:
         assert r.status_code == 200
         mods = r.json()
         keys = {m["key"] for m in mods}
-        assert {"packing", "asn", "eway-bill", "vendor-ack", "dqms"}.issubset(keys)
+        assert {"packing", "asn", "eway-bill", "vendor-ack", "pdi"}.issubset(keys)
 
     def test_module_ping(self, admin_token):
         r = requests.post(f"{API}/modules/packing/ping", headers=_auth(admin_token), timeout=10)

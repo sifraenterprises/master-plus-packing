@@ -130,7 +130,7 @@ async def extract_invoices(pdf_bytes: bytes, num_pages: int) -> list:
     return invoices
 
 
-def split_pdf(source_path: Path, page_start: int, page_end: int, num_pages: int):
+def split_pdf(source_path: Path, page_start: int, page_end: int, num_pages: int, out_dir: Path = None):
     """Returns (file_id, size, pages) for the split PDF, or None if it spans the whole doc."""
     s = max(1, min(page_start or 1, num_pages))
     e = max(s, min(page_end or s, num_pages))
@@ -141,7 +141,7 @@ def split_pdf(source_path: Path, page_start: int, page_end: int, num_pages: int)
     for p in range(s - 1, e):
         writer.add_page(reader.pages[p])
     fid = str(uuid.uuid4())
-    out = MD_UPLOAD_DIR / f"{fid}.pdf"
+    out = (out_dir or MD_UPLOAD_DIR) / f"{fid}.pdf"
     with open(out, "wb") as fh:
         writer.write(fh)
     return fid, out.stat().st_size, e - s + 1
@@ -201,7 +201,8 @@ async def _set_file(batch_id: str, file_id: str, fields: dict):
 async def process_file(batch_id: str, file_doc: dict, created_by: str) -> bool:
     file_id = file_doc["file_id"]
     name = file_doc.get("name", file_id)
-    path = MD_UPLOAD_DIR / f"{file_id}.pdf"
+    from environment import find_upload
+    path = find_upload(MD_UPLOAD_DIR, f"{file_id}.pdf") or MD_UPLOAD_DIR / f"{file_id}.pdf"
     await _set_file(batch_id, file_id, {"status": "processing", "error": ""})
     await db.md_uploaded_invoices.update_one({"file_id": file_id}, {"$set": {"status": "processing"}})
     await _log(batch_id, "info", f"Processing {name}…")
@@ -213,7 +214,9 @@ async def process_file(batch_id: str, file_doc: dict, created_by: str) -> bool:
             raise ValueError("No invoices detected in this PDF")
         record_ids = []
         for inv in invoices:
-            split = split_pdf(path, _i(inv.get("page_start", 1)), _i(inv.get("page_end", 1)), num_pages)
+            from environment import env_upload_dir
+            split = split_pdf(path, _i(inv.get("page_start", 1)), _i(inv.get("page_end", 1)), num_pages,
+                              out_dir=await env_upload_dir(MD_UPLOAD_DIR))
             split_file_id = file_id
             if split:
                 split_file_id, split_size, split_pages = split

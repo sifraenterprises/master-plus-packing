@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from bson import ObjectId
 from database import db
+from environment import env_fields, env_list_filter
 from models import PackingSlip, PackingSlipInput
 from auth import get_current_user, log_activity
 
@@ -10,7 +11,7 @@ router = APIRouter(prefix="/packing", tags=["packing"])
 @router.post("/slips")
 async def create_slip(body: PackingSlipInput, user: dict = Depends(get_current_user)):
     slip = PackingSlip(**body.model_dump(), created_by=user["username"])
-    result = await db.packing_slips.insert_one(slip.to_mongo())
+    result = await db.packing_slips.insert_one({**slip.to_mongo(), **(await env_fields())})
     await log_activity(user["username"], "packing_slip_saved", f"Invoice {body.invoice_number} — {body.boxes} boxes", "packing")
     doc = await db.packing_slips.find_one({"_id": result.inserted_id})
     return PackingSlip.from_mongo(doc).model_dump()
@@ -18,7 +19,7 @@ async def create_slip(body: PackingSlipInput, user: dict = Depends(get_current_u
 
 @router.get("/slips")
 async def list_slips(user: dict = Depends(get_current_user)):
-    docs = await db.packing_slips.find().sort("created_at", -1).to_list(100)
+    docs = await db.packing_slips.find(await env_list_filter()).sort("created_at", -1).to_list(100)
     return [PackingSlip.from_mongo(d).model_dump() for d in docs]
 
 

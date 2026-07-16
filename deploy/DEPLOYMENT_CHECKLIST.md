@@ -10,7 +10,7 @@ Hostinger VPS.
 
 | # | Blocker | Fix applied |
 |---|---------|-------------|
-| 1 | `requirements.txt` had been overwritten by a full `pip freeze` containing packages that do **not exist on public PyPI** (`emergentintegrations`, `litellm` from an internal URL). `pip install -r requirements.txt` would have **failed on the VPS**. | Restored the curated production list + added `pymupdf==1.28.0`. |
+| 1 | `requirements.txt` had been overwritten by a full `pip freeze` containing packages that do **not exist on public PyPI** (platform-internal packages not on public PyPI). `pip install -r requirements.txt` would have **failed on the VPS**. | Restored the curated production list + added `pymupdf==1.28.0`. |
 | 2 | PDI template revisions store **absolute paths** (`/app/backend/uploads/...`) that do not exist on the VPS — PDI generation would 404 after deploy. | Added `resolve_source_pdf()` in `pdi_generate.py`; all readers now re-anchor paths to the local `backend/uploads/` dir. Portable across any install path. |
 | 3 | The PDI template library (121 parts, 128 revisions, inspectors, approvers) lives **only in this environment's MongoDB** — the VPS DB would have an empty PDI library. | Created `deploy/seed/pdi_seed.gz` (57 KB mongodump) + `deploy/seed_pdi.sh` one-time import script. Only touches `pdi_*` master collections; never touches dispatch/invoice/user data. |
 

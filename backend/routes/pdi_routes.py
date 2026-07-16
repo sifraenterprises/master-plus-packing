@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, Response
 from pymongo import ReturnDocument
 from bson import ObjectId
 from database import db
+from environment import env_fields, env_list_filter, env_upload_dir
 from models import utcnow
 from auth import get_current_user, require_admin, log_activity
 from pdi_models import (PdiTemplate, PdiTemplateCreate, PdiTemplateUpdate, PdiDraftPreview,
@@ -939,14 +940,14 @@ async def generate_report(payload: PdiGenerateInput, user: dict = Depends(get_cu
     )
     observations = generate_observations(template["rows"], n_obs=sample_count)
     report.observations = observations
-    pdf_path = REPORT_DIR / f"{uuid.uuid4().hex}.pdf"
+    pdf_path = (await env_upload_dir(REPORT_DIR)) / f"{uuid.uuid4().hex}.pdf"
     try:
         render_report_pdf(template, report.model_dump(), observations, str(pdf_path))
     except Exception as e:
         logger.exception("PDI render failed")
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)[:150]}")
     report.pdf_path = str(pdf_path)
-    result = await db.pdi_reports.insert_one(report.to_mongo())
+    result = await db.pdi_reports.insert_one({**report.to_mongo(), **(await env_fields())})
     await log_activity(user["username"], "pdi_generated",
                        f"{report_no} · {report.part_name} · rev {report.template_revision}", "pdi")
     data = report.model_dump()
@@ -1016,7 +1017,7 @@ async def manual_upload(file: UploadFile = File(...), master_dispatch_id: str = 
     dispatch = None
     if master_dispatch_id and ObjectId.is_valid(master_dispatch_id):
         dispatch = await db.master_dispatch.find_one({"_id": ObjectId(master_dispatch_id)})
-    pdf_path = REPORT_DIR / f"manual_{uuid.uuid4().hex}.pdf"
+    pdf_path = (await env_upload_dir(REPORT_DIR)) / f"manual_{uuid.uuid4().hex}.pdf"
     pdf_path.write_bytes(content)
     report_no = await _next_report_no()
     report = PdiReport(
@@ -1028,7 +1029,7 @@ async def manual_upload(file: UploadFile = File(...), master_dispatch_id: str = 
         customer_name=(dispatch or {}).get("customer_name", ""),
         report_date=utcnow().strftime("%d.%m.%Y"),
         pdf_path=str(pdf_path), created_by=user["username"])
-    result = await db.pdi_reports.insert_one(report.to_mongo())
+    result = await db.pdi_reports.insert_one({**report.to_mongo(), **(await env_fields())})
     data = report.model_dump()
     data["id"] = str(result.inserted_id)
     if dispatch:

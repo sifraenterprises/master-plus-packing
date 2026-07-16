@@ -13,6 +13,7 @@ from bson import ObjectId
 from pydantic import BaseModel, Field
 from pathlib import Path
 from database import db
+from environment import env_fields, env_list_filter
 from models import utcnow
 from auth import get_current_user, log_activity
 from alerts import send_alert
@@ -48,9 +49,8 @@ def now_iso():
 
 
 async def get_mode():
-    setting = await db.settings.find_one({"key": "automation_mode"})
-    mode = setting["value"] if setting else os.environ.get("AUTOMATION_MODE", "test")
-    return "test" if mode in ("test", "mock") else "live"
+    from environment import get_effective_automation_mode
+    return await get_effective_automation_mode()
 
 
 def serialize(a: dict) -> dict:
@@ -253,7 +253,7 @@ async def process_queue(ids: list[str], run_id: str, user: str):
 @router.post("/import")
 async def import_from_md(user: dict = Depends(get_current_user)):
     existing_ids = {d["master_dispatch_id"] async for d in db.asn_creation.find({}, {"master_dispatch_id": 1})}
-    query = {"$or": [{"asn_number": ""}, {"asn_number": {"$exists": False}}]}
+    query = {"$or": [{"asn_number": ""}, {"asn_number": {"$exists": False}}], **(await env_list_filter())}
     imported = 0
     async for md in db.master_dispatch.find(query):
         mid = str(md["_id"])
@@ -280,7 +280,7 @@ async def import_from_md(user: dict = Depends(get_current_user)):
             "created_at": now_iso(), "updated_at": now_iso(), "created_by": user["username"],
         }
         doc["status"] = compute_status(doc)
-        await db.asn_creation.insert_one(doc)
+        await db.asn_creation.insert_one({**doc, **(await env_fields())})
         imported += 1
     await log_activity(user["username"], "asn_import", f"{imported} record(s) imported from Master Dispatch", "asn")
     return {"imported": imported}
@@ -291,7 +291,7 @@ async def import_from_md(user: dict = Depends(get_current_user)):
 @router.get("/records")
 async def asn_records(status: Optional[str] = None, search: Optional[str] = None,
                       page: int = 1, page_size: int = 50, user: dict = Depends(get_current_user)):
-    query = {}
+    query = await env_list_filter()
     if status and status != "All":
         query["status"] = status
     if search:
@@ -404,6 +404,7 @@ async def _resolve_documents(ids: list[str]):
 
 
 async def _start(background_tasks: BackgroundTasks, ids: list[str], user: str):
+    await get_mode()  # blocks in maintenance / emergency stop before scheduling
     if run_state["running"]:
         raise HTTPException(status_code=409, detail="An ASN automation run is already in progress")
     if not ids:
@@ -429,7 +430,7 @@ async def asn_run(req: RunRequest, background_tasks: BackgroundTasks, user: dict
 
 @router.post("/run-ready")
 async def asn_run_ready(background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
-    ids = [str(d["_id"]) async for d in db.asn_creation.find({"status": "Ready"}, {"_id": 1})]
+    ids = [str(d["_id"]) async for d in db.asn_creation.find({"status": "Ready", **(await env_list_filter())}, {"_id": 1})]
     result = await _start(background_tasks, ids, user["username"])
     await log_activity(user["username"], "asn_run_ready", f"{len(ids)} record(s)", "asn")
     return result
@@ -437,7 +438,7 @@ async def asn_run_ready(background_tasks: BackgroundTasks, user: dict = Depends(
 
 @router.post("/retry-failed")
 async def asn_retry_failed(background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
-    ids = [str(d["_id"]) async for d in db.asn_creation.find({"status": "Failed"}, {"_id": 1})]
+    ids = [str(d["_id"]) async for d in db.asn_creation.find({"status": "Failed", **(await env_list_filter())}, {"_id": 1})]
     result = await _start(background_tasks, ids, user["username"])
     await log_activity(user["username"], "asn_retry_failed", f"{len(ids)} record(s)", "asn")
     return result
@@ -510,7 +511,7 @@ async def batch_allocations(search: Optional[str] = None, user: dict = Depends(g
 async def asn_export(user: dict = Depends(get_current_user)):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
-    docs = await db.asn_creation.find({}).sort("created_at", -1).to_list(5000)
+    docs = await db.asn_creation.find(await env_list_filter()).sort("created_at", -1).to_list(5000)
     wb = Workbook()
     ws = wb.active
     ws.title = "ASN Creation"

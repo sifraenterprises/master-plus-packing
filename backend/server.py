@@ -24,6 +24,7 @@ from routes.eway_routes import router as eway_router
 from routes.vendor_ack_routes import router as vendor_ack_router
 from routes.asn_routes import router as asn_router
 from routes.system_routes import router as system_router
+from routes.environment_routes import router as environment_router
 from routes.pdi_routes import router as pdi_router
 from routes.documents_routes import router as documents_router, seed_document_types
 
@@ -99,6 +100,7 @@ api_router.include_router(eway_router)
 api_router.include_router(vendor_ack_router)
 api_router.include_router(asn_router)
 api_router.include_router(system_router)
+api_router.include_router(environment_router)
 api_router.include_router(pdi_router)
 api_router.include_router(documents_router)
 api_router.include_router(public_router)
@@ -156,6 +158,14 @@ async def startup():
     await db.eway_submissions.create_index("status")
     await db.vendor_eway_acknowledgement.create_index("dispatch_id", unique=True)
     await db.vendor_eway_acknowledgement.create_index("status")
+    # Environment (test/live/maintenance) — safe repeatable migration
+    for coll in ("master_dispatch", "packing_slips", "pdi_reports", "asn_creation",
+                 "eway_submissions", "vendor_eway_acknowledgement"):
+        await db[coll].create_index("environment")
+        await db[coll].update_many(
+            {"environment": {"$exists": False}},
+            {"$set": {"environment": "live", "is_test": False, "created_environment": "live"}})
+    await db.environment_audit.create_index([("created_at", -1)])
     await db.vendor_eway_acknowledgement.create_index([("created_at", -1)])
     await db.plants.create_index("name", unique=True)
     await db.asn_creation.create_index("master_dispatch_id", unique=True)

@@ -17,6 +17,8 @@ class MDItem(BaseModel):
 
 class MasterDispatch(BaseDocument):
     dispatch_no: str = ""
+    environment: str = ""
+    is_test: bool = False
     customer_name: str = ""
     customer_code: str = ""
     gstin: str = ""

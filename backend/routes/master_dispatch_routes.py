@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from pymongo import ReturnDocument
 from pypdf import PdfReader
 from database import db
+from environment import env_fields, env_list_filter, env_upload_dir, find_upload
 from models import utcnow
 from md_models import MasterDispatch, MasterDispatchInput
 from md_ocr import MD_UPLOAD_DIR, launch_batch, next_md_no
@@ -81,7 +82,7 @@ async def upload_invoices(files: list[UploadFile] = File(...), user: dict = Depe
     file_entries = []
     for name, content in payloads:
         file_id = str(uuid.uuid4())
-        (MD_UPLOAD_DIR / f"{file_id}.pdf").write_bytes(content)
+        ((await env_upload_dir(MD_UPLOAD_DIR)) / f"{file_id}.pdf").write_bytes(content)
         try:
             pages = len(PdfReader(BytesIO(content)).pages)
         except Exception:
@@ -248,8 +249,8 @@ async def md_stats(user: dict = Depends(get_current_user)):
 @router.get("/files/{file_id}")
 async def get_file(file_id: str, user: dict = Depends(get_current_user)):
     doc = await db.md_uploaded_invoices.find_one({"file_id": file_id})
-    path = MD_UPLOAD_DIR / f"{file_id}.pdf"
-    if not doc or not path.exists():
+    path = find_upload(MD_UPLOAD_DIR, f"{file_id}.pdf")
+    if not doc or not path:
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(str(path), media_type="application/pdf", filename=doc.get("original_name", f"{file_id}.pdf"))
 
@@ -283,7 +284,8 @@ async def md_export_excel(
 ):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
-    query = build_md_query(search, invoice, customer, part, gstin, po, eway, status, verified, None, date_from, date_to)
+    query = {**build_md_query(search, invoice, customer, part, gstin, po, eway, status, verified, None, date_from, date_to),
+             **(await env_list_filter())}
     docs = await db.master_dispatch.find(query).sort("created_at", -1).to_list(5000)
     wb = Workbook()
     ws = wb.active
@@ -316,7 +318,8 @@ async def md_export_pdf(
     from reportlab.lib.units import mm
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet
-    query = build_md_query(search, invoice, customer, part, gstin, po, eway, status, verified, None, date_from, date_to)
+    query = {**build_md_query(search, invoice, customer, part, gstin, po, eway, status, verified, None, date_from, date_to),
+             **(await env_list_filter())}
     docs = await db.master_dispatch.find(query).sort("created_at", -1).to_list(2000)
     cols = [("Dispatch No", "dispatch_no"), ("Invoice No", "invoice_number"), ("Date", "invoice_date"),
             ("Customer", "customer_name"), ("GSTIN", "gstin"), ("Items", None), ("Invoice Total", "invoice_total"),
@@ -368,7 +371,7 @@ def _dmy(date: str) -> str:
 
 
 async def _daily_rows(date: str, customer: str = None, company: str = None):
-    docs = await db.master_dispatch.find(_daily_query(date, customer, company)).sort("invoice_number", 1).to_list(2000)
+    docs = await db.master_dispatch.find({**_daily_query(date, customer, company), **(await env_list_filter())}).sort("invoice_number", 1).to_list(2000)
     rows = [{"sr": i + 1, "invoice_number": d.get("invoice_number", ""),
              "qty": int(d.get("boxes") or 0), "unit": "BOX"} for i, d in enumerate(docs)]
     return rows, sum(r["qty"] for r in rows)
@@ -488,7 +491,7 @@ async def daily_report_pdf(date: str, customer: str = None, company: str = None,
 async def create_md(body: MasterDispatchInput, user: dict = Depends(get_current_user)):
     record = MasterDispatch(**body.model_dump(), dispatch_no=await next_md_no(),
                             ocr_status="manual", created_by=user["username"])
-    result = await db.master_dispatch.insert_one(record.to_mongo())
+    result = await db.master_dispatch.insert_one({**record.to_mongo(), **(await env_fields())})
     await log_activity(user["username"], "md_created", record.dispatch_no, "master_dispatch")
     doc = await db.master_dispatch.find_one({"_id": result.inserted_id})
     return MasterDispatch.from_mongo(doc).model_dump()
@@ -502,7 +505,8 @@ async def list_md(
     sort_by: str = "created_at", sort_dir: str = "desc",
     page: int = 1, page_size: int = 25, user: dict = Depends(get_current_user),
 ):
-    query = build_md_query(search, invoice, customer, part, gstin, po, eway, status, verified, batch_id, date_from, date_to)
+    query = {**build_md_query(search, invoice, customer, part, gstin, po, eway, status, verified, batch_id, date_from, date_to),
+             **(await env_list_filter())}
     sort_by = sort_by if sort_by in SORT_FIELDS else "created_at"
     direction = 1 if sort_dir == "asc" else -1
     page = max(1, page)
@@ -576,7 +580,7 @@ async def duplicate_md(record_id: str, user: dict = Depends(get_current_user)):
     doc["created_by"] = user["username"]
     doc["created_at"] = utcnow().isoformat()
     doc["updated_at"] = utcnow().isoformat()
-    result = await db.master_dispatch.insert_one(doc)
+    result = await db.master_dispatch.insert_one({**doc, **(await env_fields())})
     await log_activity(user["username"], "md_duplicated", f"→ {doc['dispatch_no']}", "master_dispatch")
     new_doc = await db.master_dispatch.find_one({"_id": result.inserted_id})
     return MasterDispatch.from_mongo(new_doc).model_dump()

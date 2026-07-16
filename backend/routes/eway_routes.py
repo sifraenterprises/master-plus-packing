@@ -51,9 +51,8 @@ def now_iso():
 
 
 async def get_mode():
-    setting = await db.settings.find_one({"key": "automation_mode"})
-    mode = setting["value"] if setting else os.environ.get("AUTOMATION_MODE", "test")
-    return "test" if mode in ("test", "mock") else "live"
+    from environment import get_effective_automation_mode
+    return await get_effective_automation_mode()
 
 
 def make_logger(run_id, module):
@@ -91,7 +90,8 @@ def join_record(md: dict, sub: dict) -> dict:
 
 
 async def build_record_query(status=None, invoice=None, dispatch=None, date=None):
-    query = {}
+    from environment import env_list_filter
+    query = await env_list_filter()
     if invoice:
         query["invoice_number"] = {"$regex": invoice, "$options": "i"}
     if dispatch:
@@ -211,7 +211,8 @@ async def process_batch(ids: list[str], run_id: str, user: str, force_mode: str 
         run_state["running"] = False
 
 
-def start_run(background_tasks: BackgroundTasks, ids: list[str], user: str):
+async def start_run(background_tasks: BackgroundTasks, ids: list[str], user: str):
+    await get_mode()  # blocks in maintenance / emergency stop before scheduling
     if run_state["running"]:
         raise HTTPException(status_code=409, detail="An automation run is already in progress")
     if not ids:
@@ -276,7 +277,7 @@ async def eway_stats(user: dict = Depends(get_current_user)):
 
 @router.post("/run")
 async def eway_run(req: RunRequest, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
-    result = start_run(background_tasks, req.ids, user["username"])
+    result = await start_run(background_tasks, req.ids, user["username"])
     await log_activity(user["username"], "eway_run", f"{len(req.ids)} record(s)", "eway")
     return result
 
@@ -284,7 +285,7 @@ async def eway_run(req: RunRequest, background_tasks: BackgroundTasks, user: dic
 @router.post("/run-all-pending")
 async def eway_run_all(background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     ids = await ids_by_status("Pending")
-    result = start_run(background_tasks, ids, user["username"])
+    result = await start_run(background_tasks, ids, user["username"])
     await log_activity(user["username"], "eway_run_all_pending", f"{len(ids)} record(s)", "eway")
     return result
 
@@ -292,7 +293,7 @@ async def eway_run_all(background_tasks: BackgroundTasks, user: dict = Depends(g
 @router.post("/retry-failed")
 async def eway_retry_failed(background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     ids = await ids_by_status("Failed")
-    result = start_run(background_tasks, ids, user["username"])
+    result = await start_run(background_tasks, ids, user["username"])
     await log_activity(user["username"], "eway_retry_failed", f"{len(ids)} record(s)", "eway")
     return result
 
@@ -358,7 +359,9 @@ async def eway_screenshot(name: str, user: dict = Depends(get_current_user)):
 
 @router.get("/settings")
 async def eway_settings(user: dict = Depends(get_current_user)):
-    mode = await get_mode()
+    from environment import get_environment
+    env = await get_environment()
+    mode = env["mode"] if env["mode"] in ("test", "live") else "test"
     missing = [v for v in REQUIRED_ENV if not os.environ.get(v)]
     return {"mode": mode, "env_configured": not missing, "missing_env": missing,
             "headless": os.environ.get("AUTOMATION_HEADLESS", "true").lower() == "true"}
@@ -366,22 +369,8 @@ async def eway_settings(user: dict = Depends(get_current_user)):
 
 @router.post("/settings/mode")
 async def eway_set_mode(req: ModeRequest, user: dict = Depends(require_admin)):
-    mode = "test" if req.mode in ("test", "mock") else req.mode
-    if mode not in ("test", "live"):
-        raise HTTPException(status_code=400, detail="Mode must be 'test' or 'live'")
-    if mode == "live":
-        missing = [v for v in REQUIRED_ENV if not os.environ.get(v)]
-        if missing:
-            raise HTTPException(status_code=400, detail=f"Missing required environment variable: {missing[0]}")
-        pv = await db.settings.find_one({"key": "last_portal_validation"})
-        if not (pv and pv.get("value", {}).get("all_ok")):
-            raise HTTPException(status_code=400, detail="Cannot switch to LIVE: portal selector validation has not passed. Run 'Validate Portal' (with login check enabled) in Selector Configuration until all selectors pass.")
-        tv = await db.settings.find_one({"key": "last_test_validation"})
-        if not (tv and tv.get("value", {}).get("all_ok")):
-            raise HTTPException(status_code=400, detail="Cannot switch to LIVE: TEST mode validation run has not passed. Run 'Run TEST Validation' in Selector Configuration first.")
-    await db.settings.update_one({"key": "automation_mode"}, {"$set": {"value": mode}}, upsert=True)
-    await log_activity(user["username"], "eway_mode_change", f"New mode: {mode.upper()}", "eway")
-    return {"mode": mode, "changed_by": user["username"]}
+    raise HTTPException(status_code=400,
+                        detail="Automation mode is controlled centrally — use Settings → System Environment")
 
 
 @router.get("/selectors")
@@ -432,9 +421,11 @@ async def eway_validation_status(user: dict = Depends(get_current_user)):
     tv = await db.settings.find_one({"key": "last_test_validation"}, {"_id": 0})
     portal = pv["value"] if pv else None
     test_run = tv["value"] if tv else None
+    from environment import get_environment
+    env = await get_environment()
     return {"portal_validation": portal, "test_validation": test_run,
             "ready_for_live": bool(portal and portal.get("all_ok") and test_run and test_run.get("all_ok")),
-            "mode": await get_mode()}
+            "mode": env["mode"] if env["mode"] in ("test", "live") else "test"}
 
 
 @router.post("/validation/test-run")

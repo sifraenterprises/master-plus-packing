@@ -1,10 +1,6 @@
-// craco.config.js
+// Production-safe CRACO configuration for Grewal Engineering Works
 const path = require("path");
 require("dotenv").config();
-
-// Check if we're in development/preview mode (not production build)
-// Craco sets NODE_ENV=development for start, NODE_ENV=production for build
-const isDevServer = process.env.NODE_ENV !== "production";
 
 // Environment variable overrides
 const config = {
@@ -70,15 +66,6 @@ if (config.enableHealthCheck) {
 }
 
 let webpackConfig = {
-  eslint: {
-    configure: {
-      extends: ["plugin:react-hooks/recommended"],
-      rules: {
-        "react-hooks/rules-of-hooks": "error",
-        "react-hooks/exhaustive-deps": "warn",
-      },
-    },
-  },
   webpack: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
@@ -128,22 +115,7 @@ webpackConfig.devServer = (devServerConfig) => {
   return devServerConfig;
 };
 
-// Wrap with visual edits (automatically adds babel plugin, dev server, and overlay in dev mode)
-if (isDevServer) {
-  try {
-    const { withVisualEdits } = require("@emergentbase/visual-edits/craco");
-    webpackConfig = withVisualEdits(webpackConfig);
-  } catch (err) {
-    if (err.code === 'MODULE_NOT_FOUND' && err.message.includes('@emergentbase/visual-edits/craco')) {
-      console.warn(
-        "[visual-edits] @emergentbase/visual-edits not installed — visual editing disabled."
-      );
-    } else {
-      throw err;
-    }
-  }
-}
-
+// Wrap dev-server config for webpack-dev-server v5 compatibility
 const configureDevServer = webpackConfig.devServer;
 webpackConfig.devServer = (devServerConfig) =>
   makeDevServerV5Compatible(configureDevServer(devServerConfig));

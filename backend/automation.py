@@ -124,7 +124,7 @@ class PortalAutomationBase:
     async def capture_screenshot(self, name):
         SCREENSHOT_DIR.mkdir(exist_ok=True)
         ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        path = SCREENSHOT_DIR / f"{name}_{ts}.png"
+        path = SCREENSHOT_DIR / f"{'test' if self.is_test else 'live'}_{name}_{ts}.png"
         if self.is_test:
             import base64
             path.write_bytes(base64.b64decode(

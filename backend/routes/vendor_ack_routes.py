@@ -9,6 +9,7 @@ from bson import ObjectId
 from pydantic import BaseModel
 from pathlib import Path
 from database import db
+from environment import env_fields, env_list_filter
 from models import utcnow
 from auth import get_current_user, log_activity
 from alerts import send_alert
@@ -42,9 +43,8 @@ import os
 
 
 async def get_mode():
-    setting = await db.settings.find_one({"key": "automation_mode"})
-    mode = setting["value"] if setting else os.environ.get("AUTOMATION_MODE", "test")
-    return "test" if mode in ("test", "mock") else "live"
+    from environment import get_effective_automation_mode
+    return await get_effective_automation_mode()
 
 
 def serialize_ack(a: dict) -> dict:
@@ -198,7 +198,7 @@ async def process_ack(ack_id: str, run_id: str, user: str):
 @router.get("/records")
 async def vendor_ack_records(status: Optional[str] = None, search: Optional[str] = None,
                              page: int = 1, page_size: int = 50, user: dict = Depends(get_current_user)):
-    query = {}
+    query = await env_list_filter()
     if search:
         import re
         rx = {"$regex": re.escape(search), "$options": "i"}
@@ -238,6 +238,7 @@ async def vendor_ack_run(req: AckRunRequest, background_tasks: BackgroundTasks, 
     md = await db.master_dispatch.find_one({"_id": ObjectId(req.dispatch_id)})
     if not md:
         raise HTTPException(status_code=404, detail="Master Dispatch record not found")
+    await get_mode()  # blocks in maintenance / emergency stop before scheduling
     asn = (md.get("asn_number") or "").strip()
     if not asn:
         raise HTTPException(status_code=400, detail="This dispatch has no ASN Number. Add it in Master Dispatch first.")
@@ -266,7 +267,7 @@ async def vendor_ack_run(req: AckRunRequest, background_tasks: BackgroundTasks, 
         await db.vendor_eway_acknowledgement.update_one({"_id": existing["_id"]}, {"$set": doc})
         ack_id = str(existing["_id"])
     else:
-        result = await db.vendor_eway_acknowledgement.insert_one(doc)
+        result = await db.vendor_eway_acknowledgement.insert_one({**doc, **(await env_fields())})
         ack_id = str(result.inserted_id)
     run_id = str(uuid.uuid4())
     run_state.update({"running": True, "run_id": run_id, "ack_id": ack_id,
@@ -287,6 +288,7 @@ async def vendor_ack_retry(ack_id: str, background_tasks: BackgroundTasks, user:
         raise HTTPException(status_code=404, detail="Acknowledgement record not found")
     if ack["status"] == "Completed":
         raise HTTPException(status_code=400, detail="Already acknowledged - retry not allowed")
+    await get_mode()  # blocks in maintenance / emergency stop before scheduling
     await db.vendor_eway_acknowledgement.update_one(
         {"_id": ack["_id"]}, {"$set": {"status": "Processing", "updated_at": now_iso()}}
     )

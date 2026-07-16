@@ -118,11 +118,7 @@ export default function EwayEntryTab() {
   };
 
   const toggleMode = () => {
-    if (!isAdmin) return toast.error("Admin role required to change automation mode");
-    if (settings.mode === "test") {
-      api.get("/eway/validation/status").then((r) => setReadiness(r.data)).catch(() => setReadiness(null));
-      setConfirmLive(true);
-    } else setMode("test");
+    toast.info("Automation mode is controlled centrally — Settings → System Environment");
   };
 
   const saveDetails = async () => {

@@ -101,3 +101,24 @@ frontend/node_modules/.cache/default-development/8.pack
 frontend/node_modules/.cache/default-development/9.pack
 frontend/node_modules/.cache/default-development/1.pack
 frontend/node_modules/.cache/default-development/12.pack
+
+# ---- Production hygiene (Grewal) ----
+backend/venv/
+backend/venv-audit/
+frontend/build/
+__pycache__/
+*.pyc
+backend/logs/
+backend/screenshots/
+backend/uploads/temp/
+backend/uploads/pdi_reports/
+test_reports/
+.emergent/
+.gitconfig
+playwright-report/
+test-results/
+backend/uploads/*.pdf
+!backend/uploads/pdi_master_template.pdf
+backend/uploads/md_invoices/
+backend/uploads/master_dispatch/
+backend/venv-audit/lib/python3.11/site-packages/playwright/driver/node
