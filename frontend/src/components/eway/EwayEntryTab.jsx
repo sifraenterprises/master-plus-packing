@@ -43,7 +43,7 @@ export default function EwayEntryTab() {
   const [runInfo, setRunInfo] = useState(null);
   const [settings, setSettings] = useState({ mode: "test" });
   const [confirmLive, setConfirmLive] = useState(false);
-  const [readiness, setReadiness] = useState(null);
+  const [readiness] = useState(null);
   const [filters, setFilters] = useState({ status: "All", invoice: "", dispatch: "", date: "" });
   const [editRec, setEditRec] = useState(null);
   const [saving, setSaving] = useState(false);
