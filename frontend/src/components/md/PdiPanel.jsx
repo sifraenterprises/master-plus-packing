@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Eye, DownloadSimple, ArrowsClockwise, Sparkle } from "@phosphor-icons/react";
+import { Eye, DownloadSimple, ArrowsClockwise, Sparkle, UploadSimple, CheckCircle } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import api, { apiError } from "@/lib/api";
 import PdfPreviewDialog from "@/components/pdi/PdfPreviewDialog";
@@ -27,8 +27,25 @@ export default function PdiPanel({ record, onClose, onChanged }) {
   const [lotNo, setLotNo] = useState("");
   const [sampleCount, setSampleCount] = useState("10");
   const [busy, setBusy] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [reports, setReports] = useState([]);
+  const [activeId, setActiveId] = useState("");
+  const [preview, setPreview] = useState(null); // {id, report_no}
+  const fileRef = useRef(null);
   const hasPdi = !!record?.pdi_report_no;
+
+  const loadReports = () => {
+    if (!record?.id) return;
+    api.get(`/pdi/dispatch/${record.id}/reports`).then((r) => {
+      setReports(r.data.reports);
+      setActiveId(r.data.active_id);
+    }).catch(() => {});
+  };
+
+  useEffect(() => {
+    loadReports();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record?.id, record?.pdi_report_id]);
 
   useEffect(() => {
     if (!record || hasPdi) return;
@@ -72,8 +89,37 @@ export default function PdiPanel({ record, onClose, onChanged }) {
       });
       toast.success("PDI generated & attached to this dispatch");
       onChanged();
+      loadReports();
     } catch (err) { toast.error(apiError(err)); }
     finally { setBusy(false); }
+  };
+
+  const uploadManual = async (file) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".pdf")) return toast.error("Only PDF files are supported");
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("master_dispatch_id", record.id);
+      fd.append("part_name", item?.description || "");
+      fd.append("item_code", item?.part_number || "");
+      fd.append("lot_no", lotNo || "");
+      const r = await api.post("/pdi/manual-upload", fd);
+      toast.success(`Manual PDI ${r.data.report_no} uploaded & set as Active`);
+      onChanged();
+      loadReports();
+    } catch (err) { toast.error(apiError(err)); }
+    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
+  };
+
+  const setActive = async (rep) => {
+    try {
+      await api.post(`/pdi/reports/${rep.id}/set-active`);
+      toast.success(`${rep.report_no} is now the Active PDI`);
+      onChanged();
+      loadReports();
+    } catch (err) { toast.error(apiError(err)); }
   };
 
   const download = async () => {
@@ -94,6 +140,17 @@ export default function PdiPanel({ record, onClose, onChanged }) {
     } catch (err) { toast.error(apiError(err)); }
   };
 
+  const uploadButton = (
+    <>
+      <input ref={fileRef} type="file" accept=".pdf" className="hidden" data-testid="md-pdi-manual-file-input"
+             onChange={(e) => uploadManual(e.target.files?.[0])} />
+      <Button size="sm" variant="secondary" disabled={uploading} onClick={() => fileRef.current?.click()}
+              data-testid="md-pdi-manual-upload-btn" className="rounded-sm gap-1.5">
+        <UploadSimple size={14} /> {uploading ? "Uploading…" : "Upload Manual PDI"}
+      </Button>
+    </>
+  );
+
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-xl rounded-sm" data-testid="md-pdi-panel">
@@ -103,8 +160,11 @@ export default function PdiPanel({ record, onClose, onChanged }) {
         {hasPdi ? (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2 text-xs">
-              {[["Report No", record.pdi_report_no], ["Generated", (record.pdi_generated_at || "").slice(0, 16).replace("T", " ")],
-                ["Template Revision", `r${record.pdi_template_revision || 1}`], ["Inspector", record.pdi_inspector || "—"],
+              {[["Report No", record.pdi_report_no],
+                ["Type", record.pdi_source === "manual" ? "Manual Upload" : "AI Generated"],
+                ["Generated", (record.pdi_generated_at || "").slice(0, 16).replace("T", " ")],
+                ["Template Revision", record.pdi_source === "manual" ? "—" : `r${record.pdi_template_revision || 1}`],
+                ["Inspector", record.pdi_inspector || "—"],
                 ["Approver", record.pdi_approver || "—"],
                 ["Upload Status", record.pdi_upload_status || "Pending Upload"],
                 ["Last Upload", record.pdi_last_upload_at ? record.pdi_last_upload_at.slice(0, 16).replace("T", " ") : "—"]].map(([k, v]) => (
@@ -117,15 +177,19 @@ export default function PdiPanel({ record, onClose, onChanged }) {
             <Badge variant="outline" className={`rounded-sm text-[9px] uppercase ${record.pdi_upload_status === "Uploaded to Portal" ? "border-emerald-500/50 text-emerald-500" : "border-amber-500/50 text-amber-500"}`}>
               {record.pdi_upload_status === "Uploaded to Portal" ? "Uploaded to TAFE portal during ASN" : "Will auto-upload during ASN creation"}
             </Badge>
-            <div className="flex gap-2">
-              <Button size="sm" variant="secondary" onClick={() => setPreviewOpen(true)} data-testid="md-pdi-preview-btn" className="rounded-sm gap-1.5"><Eye size={14} /> Preview</Button>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="secondary" onClick={() => setPreview({ id: record.pdi_report_id, report_no: record.pdi_report_no })} data-testid="md-pdi-preview-btn" className="rounded-sm gap-1.5"><Eye size={14} /> Preview</Button>
               <Button size="sm" variant="secondary" onClick={download} data-testid="md-pdi-download-btn" className="rounded-sm gap-1.5"><DownloadSimple size={14} /> Download</Button>
-              <Button size="sm" variant="secondary" onClick={regenerate} data-testid="md-pdi-regenerate-btn" className="rounded-sm gap-1.5 text-amber-500"><ArrowsClockwise size={14} /> Regenerate</Button>
+              {record.pdi_source !== "manual" && (
+                <Button size="sm" variant="secondary" onClick={regenerate} data-testid="md-pdi-regenerate-btn" className="rounded-sm gap-1.5 text-amber-500"><ArrowsClockwise size={14} /> Regenerate</Button>
+              )}
+              {uploadButton}
             </div>
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">No PDI attached yet. Everything below is auto-populated from this dispatch — just confirm and generate.</p>
+            <p className="text-xs text-muted-foreground">No PDI attached yet. Generate one via AI below, or upload a ready PDI PDF manually.</p>
+            <div className="flex justify-end">{uploadButton}</div>
             {record.items?.length > 1 && (
               <div>
                 <Label className="text-[11px] text-muted-foreground">Item</Label>
@@ -185,10 +249,42 @@ export default function PdiPanel({ record, onClose, onChanged }) {
             </Button>
           </div>
         )}
-        <PdfPreviewDialog open={previewOpen} onClose={() => setPreviewOpen(false)}
-                          title={`${record.pdi_report_no || ""} · ${record.invoice_number}`}
-                          pdfUrl={record.pdi_report_id ? `/pdi/reports/${record.pdi_report_id}/pdf` : ""}
-                          downloadName={`${record.pdi_report_no || "pdi"}.pdf`} />
+
+        {reports.length > 1 && (
+          <div className="space-y-1.5" data-testid="md-pdi-reports-list">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">All PDIs for this dispatch — only the Active one is used for ASN &amp; downloads</p>
+            <div className="max-h-40 overflow-y-auto space-y-1">
+              {reports.map((rep) => (
+                <div key={rep.id} className="flex items-center justify-between border border-border rounded-sm px-2.5 py-1.5 bg-background" data-testid={`md-pdi-report-row-${rep.report_no}`}>
+                  <div className="flex items-center gap-2 text-xs">
+                    <b>{rep.report_no}</b>
+                    <Badge variant="outline" className={`rounded-sm text-[9px] uppercase ${rep.source === "manual" ? "border-sky-500/50 text-sky-500" : "border-primary/40 text-primary"}`}>
+                      {rep.source === "manual" ? "Manual" : "AI"}
+                    </Badge>
+                    <span className="text-muted-foreground">{(rep.created_at || "").slice(0, 16).replace("T", " ")}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button title="Preview" onClick={() => setPreview(rep)} data-testid={`md-pdi-report-preview-${rep.report_no}`}
+                            className="p-1 text-muted-foreground hover:text-primary transition-colors"><Eye size={14} /></button>
+                    {rep.id === activeId ? (
+                      <Badge className="rounded-sm text-[9px] uppercase gap-1 bg-emerald-600/15 text-emerald-500 border border-emerald-500/40" data-testid={`md-pdi-active-badge-${rep.report_no}`}>
+                        <CheckCircle size={11} weight="fill" /> Active
+                      </Badge>
+                    ) : (
+                      <Button size="sm" variant="ghost" onClick={() => setActive(rep)} data-testid={`md-pdi-set-active-${rep.report_no}`}
+                              className="rounded-sm h-6 px-2 text-[10px] uppercase">Set Active</Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <PdfPreviewDialog open={!!preview} onClose={() => setPreview(null)}
+                          title={`${preview?.report_no || ""} · ${record.invoice_number}`}
+                          pdfUrl={preview?.id ? `/pdi/reports/${preview.id}/pdf` : ""}
+                          downloadName={`${preview?.report_no || "pdi"}.pdf`} />
       </DialogContent>
     </Dialog>
   );

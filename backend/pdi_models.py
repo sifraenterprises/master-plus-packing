@@ -118,7 +118,8 @@ class PdiReport(BaseDocument):
     observations: list[list[str]] = []
     sample_count: int = 10
     pdf_path: str = ""
-    status: str = "generated"  # generated | regenerated
+    source: str = "ai"  # ai | manual
+    status: str = "generated"  # generated | regenerated | manual
     regenerated_count: int = 0
     created_by: str = ""
     created_at: str = Field(default_factory=lambda: utcnow().isoformat())

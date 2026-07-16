@@ -58,6 +58,7 @@ class MasterDispatch(BaseDocument):
     updated_at: str = Field(default_factory=lambda: utcnow().isoformat())
     pdi_report_id: str = ""
     pdi_report_no: str = ""
+    pdi_source: str = ""
     pdi_generated_at: str = ""
     pdi_template_revision: int = 0
     pdi_inspector: str = ""

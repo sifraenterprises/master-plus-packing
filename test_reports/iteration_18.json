@@ -1,0 +1,37 @@
+{
+  "summary": "Manual PDI Upload + Active PDI feature verified end-to-end. Backend pytest: 9/9 passing in /app/backend/tests/test_manual_pdi.py — manual-upload rejects non-PDF (400), manual-upload without dispatch creates PDI-XXXX with source=manual/status=manual, manual-upload WITH dispatch attaches as ACTIVE (dispatch.pdi_report_id/no/source updated, exactly one PDI entry in documents), regenerate on manual returns 400 'Manual PDI uploads cannot be regenerated', /pdf serves application/pdf, dispatch/{id}/reports returns {active_id, reports:[{source ai|manual, ...}]}, set-active switches between AI↔manual (dispatch pdi_source flips manual↔ai), DELETE non-active leaves dispatch pdi_* intact, DELETE active clears pdi_* fields and removes PDI from documents array; regression: /pdi/reports items include source field. Frontend Playwright: /portal/modules/pdi Generate tab — pdi-mode-toggle with pdi-mode-ai/pdi-mode-manual works, clicking Manual shows pdi-manual-upload-card, pdi-manual-upload-btn is disabled without file and enabled after selecting a PDF, pdi-manual-dispatch-info shows the amber 'No dispatch selected' warning when no dispatch chosen, uploading a small reportlab-generated PDF succeeds and PDF preview dialog opens. /portal/master-dispatch/list — PDI badge (md-pdi-GEW-MD-00041) opens md-pdi-panel which now shows md-pdi-manual-upload-btn; after uploading via md-pdi-manual-file-input, md-pdi-type reads 'Manual Upload' and md-pdi-reports-list shows all 4 PDIs (2 manual + 2 AI) with sky-blue Manual badges and Active badge/Set Active buttons; clicking md-pdi-set-active-PDI-0014 switches active back to AI PDI-0014 (md-pdi-report-no='PDI-0014', md-pdi-type='AI Generated'). ReportsHistory code inspection confirms sky-blue 'manual' badge, '—' revision for manual, regenerate button gated by source!=='manual', and status filter includes Manual option. Cleanup completed: all test-created manual reports (PDI-0035, 0036, 0037, plus additional TEST_ manuals from pytest) deleted; PDI-0014 restored as active on dispatch 6a573d5baca1aebf967b39d9; global manual report count = 0; only PDI-0014 (active) + PDI-0015 remain on that dispatch.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Master Dispatch > PDI panel", "issues": ["onChanged handler in DispatchList.jsx auto-closes the PDI dialog after every action (upload, generate, set-active). User must manually reopen the panel to see updated fields or perform a follow-up action (e.g., switch Active). Minor UX friction — not a functional bug, but consider keeping the dialog open and just reloading reports."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_manual_pdi.py",
+    "/app/test_reports/pytest/manual_pdi_results.xml"
+  ],
+  "action_items": [
+    "Consider not closing the PDI panel dialog on every onChanged (DispatchList.jsx line 268) — reload reports in-panel instead so users can Set Active without reopening the dialog."
+  ],
+  "critical_code_review_comments": [
+    "pdi_routes.manual_upload correctly rejects non-PDF, empty file, and gracefully handles missing/invalid master_dispatch_id (stores report without dispatch link).",
+    "_attach_pdi_to_dispatch uses $pull then $push on documents array to guarantee a single PDI entry — verified via DB assertion in test.",
+    "_detach_pdi_from_dispatch only clears the pdi_* dispatch fields when the deleted report was the active one (was_active check) — verified.",
+    "regenerate_report explicitly blocks source=='manual' with 400 — verified.",
+    "set_active_report requires the report to have a linked master_dispatch_id and an existing PDF on disk (404 if missing) — correct.",
+    "GET /pdi/dispatch/{id}/reports response schema is minimal and includes source, template_revision (0 for manual so revision column can render '—').",
+    "Minor: /pdi/manual-upload accepts any user (not admin-only). If manual uploads should be restricted, wrap with require_admin. As spec says 'Users can upload', current behaviour is fine.",
+    "Minor UX: DispatchList.onChanged closes the PdiPanel on every mutation — see design_issues."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_manual_pdi.py"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% of requested manual PDI flows"},
+  "test_credentials": "admin / 5@Sohangso, dispatch / 5@Grewal",
+  "seed_data_creation": "None persisted. Test manual PDI reports created during testing (PDI-0035..0037 and pytest TEST_ manuals) were all deleted; original active PDI-0014 restored on dispatch 6a573d5baca1aebf967b39d9. Global manual report count is 0.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Target dispatch: id=6a573d5baca1aebf967b39d9, dispatch_no=GEW-MD-00041, invoice=26-27/1032. Backend endpoints: POST /api/pdi/manual-upload (multipart), GET /api/pdi/dispatch/{id}/reports, POST /api/pdi/reports/{id}/set-active, DELETE /api/pdi/reports/{id} (admin). PdiPanel dialog auto-closes on onChanged (DispatchList.jsx L268) — reopen the panel between actions in playwright. PDI counter (counters._id='pdi_report') has advanced past PDI-0037 due to testing; next AI/manual generation will be PDI-0038+."
+}

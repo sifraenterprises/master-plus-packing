@@ -405,6 +405,7 @@ async def _attach_pdi_to_dispatch(dispatch_id: str, report: dict):
     entry = {"type": "PDI", "ref_id": str(report.get("id") or report.get("_id")),
              "report_no": report.get("report_no", ""), "file_path": report.get("pdf_path", ""),
              "generated_at": now, "revision": report.get("template_revision", 1),
+             "source": report.get("source", "ai"),
              "inspector": report.get("inspector", ""), "approver": report.get("approver", ""),
              "upload_status": "Pending Upload", "last_upload_at": ""}
     await db.master_dispatch.update_one({"_id": oid}, {"$pull": {"documents": {"type": "PDI"}}})
@@ -412,6 +413,7 @@ async def _attach_pdi_to_dispatch(dispatch_id: str, report: dict):
         "$push": {"documents": entry},
         "$set": {"pdi_report_id": entry["ref_id"], "pdi_report_no": entry["report_no"],
                  "pdi_generated_at": now, "pdi_template_revision": entry["revision"],
+                 "pdi_source": entry["source"],
                  "pdi_inspector": entry["inspector"], "pdi_approver": entry["approver"],
                  "pdi_upload_status": "Pending Upload", "pdi_last_upload_at": "",
                  "updated_at": now}})
@@ -430,10 +432,16 @@ async def _detach_pdi_from_dispatch(dispatch_id: str, report: dict):
         return
     oid = ObjectId(dispatch_id)
     now = utcnow().isoformat()
+    md = await db.master_dispatch.find_one({"_id": oid}, {"pdi_report_id": 1})
+    was_active = bool(md) and md.get("pdi_report_id") == str(report["_id"])
     await db.master_dispatch.update_one({"_id": oid}, {
         "$pull": {"documents": {"type": "PDI", "ref_id": str(report["_id"])}},
+        "$set": {"updated_at": now}})
+    if not was_active:
+        return
+    await db.master_dispatch.update_one({"_id": oid}, {
         "$unset": {"pdi_report_id": "", "pdi_report_no": "", "pdi_generated_at": "",
-                   "pdi_template_revision": "", "pdi_inspector": "", "pdi_approver": "",
+                   "pdi_template_revision": "", "pdi_source": "", "pdi_inspector": "", "pdi_approver": "",
                    "pdi_upload_status": "", "pdi_last_upload_at": ""},
         "$set": {"updated_at": now}})
     await db.asn_creation.update_one(
@@ -528,6 +536,8 @@ async def _template_at_revision(template_id: str, revision: int) -> dict:
 @router.post("/reports/{report_id}/regenerate")
 async def regenerate_report(report_id: str, user: dict = Depends(get_current_user)):
     doc = await _report_or_404(report_id)
+    if doc.get("source") == "manual":
+        raise HTTPException(status_code=400, detail="Manual PDI uploads cannot be regenerated")
     template = await _template_at_revision(doc["template_id"], doc.get("template_revision", 1))
     if not template.get("rows") or not Path(resolve_source_pdf(template.get("source_pdf", ""))).exists():
         raise HTTPException(status_code=404, detail="Original template revision unavailable — cannot regenerate")
@@ -550,6 +560,74 @@ async def regenerate_report(report_id: str, user: dict = Depends(get_current_use
                                           {**doc, "id": str(doc["_id"]), "pdf_path": pdf_path})
     await log_activity(user["username"], "pdi_regenerated", doc.get("report_no", ""), "pdi")
     return {"status": "regenerated", "report_no": doc.get("report_no", "")}
+
+
+# ---------- Manual PDI upload + Active PDI ----------
+
+@router.post("/manual-upload")
+async def manual_upload(file: UploadFile = File(...), master_dispatch_id: str = Form(""),
+                        part_name: str = Form(""), item_code: str = Form(""),
+                        lot_no: str = Form(""), inspector: str = Form(""), approver: str = Form(""),
+                        user: dict = Depends(get_current_user)):
+    if not (file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+    dispatch = None
+    if master_dispatch_id and ObjectId.is_valid(master_dispatch_id):
+        dispatch = await db.master_dispatch.find_one({"_id": ObjectId(master_dispatch_id)})
+    pdf_path = REPORT_DIR / f"manual_{uuid.uuid4().hex}.pdf"
+    pdf_path.write_bytes(content)
+    report_no = await _next_report_no()
+    report = PdiReport(
+        report_no=report_no, source="manual", status="manual", template_revision=0,
+        part_name=part_name, item_code=item_code, lot_no=lot_no,
+        inspector=inspector, approver=approver,
+        master_dispatch_id=master_dispatch_id if dispatch else "",
+        invoice_number=(dispatch or {}).get("invoice_number", ""),
+        customer_name=(dispatch or {}).get("customer_name", ""),
+        report_date=utcnow().strftime("%d.%m.%Y"),
+        pdf_path=str(pdf_path), created_by=user["username"])
+    result = await db.pdi_reports.insert_one(report.to_mongo())
+    data = report.model_dump()
+    data["id"] = str(result.inserted_id)
+    if dispatch:
+        await _attach_pdi_to_dispatch(master_dispatch_id, {**data})
+    await log_activity(user["username"], "pdi_manual_uploaded",
+                       f"{report_no} · {file.filename}" + (f" · attached to {report.invoice_number}" if dispatch else ""), "pdi")
+    data.pop("pdf_path", None)
+    data.pop("observations", None)
+    return data
+
+
+@router.get("/dispatch/{dispatch_id}/reports")
+async def dispatch_reports(dispatch_id: str, user: dict = Depends(get_current_user)):
+    md = await db.master_dispatch.find_one({"_id": _oid(dispatch_id, "dispatch")}, {"pdi_report_id": 1})
+    if not md:
+        raise HTTPException(status_code=404, detail="Dispatch not found")
+    docs = await db.pdi_reports.find({"master_dispatch_id": dispatch_id}) \
+        .sort("created_at", -1).to_list(50)
+    return {"active_id": md.get("pdi_report_id", ""),
+            "reports": [{"id": str(d["_id"]), "report_no": d.get("report_no", ""),
+                         "source": d.get("source", "ai"), "status": d.get("status", ""),
+                         "part_name": d.get("part_name", ""), "item_code": d.get("item_code", ""),
+                         "inspector": d.get("inspector", ""), "approver": d.get("approver", ""),
+                         "template_revision": d.get("template_revision", 1),
+                         "created_at": d.get("created_at", "")} for d in docs]}
+
+
+@router.post("/reports/{report_id}/set-active")
+async def set_active_report(report_id: str, user: dict = Depends(get_current_user)):
+    doc = await _report_or_404(report_id)
+    if not doc.get("master_dispatch_id"):
+        raise HTTPException(status_code=400, detail="Report is not linked to a dispatch")
+    if not doc.get("pdf_path") or not Path(doc["pdf_path"]).exists():
+        raise HTTPException(status_code=404, detail="Report PDF missing — regenerate or re-upload it first")
+    await _attach_pdi_to_dispatch(doc["master_dispatch_id"], {**doc, "id": str(doc["_id"])})
+    await log_activity(user["username"], "pdi_set_active",
+                       f"{doc.get('report_no', '')} set as active PDI", "pdi")
+    return {"active": doc.get("report_no", "")}
 
 
 # ---------- Reports history ----------

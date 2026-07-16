@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MagnifyingGlass, Sparkle, FileText } from "@phosphor-icons/react";
+import { MagnifyingGlass, Sparkle, FileText, UploadSimple } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +41,9 @@ export default function GeneratePanel() {
   const [busy, setBusy] = useState(false);
   const [generated, setGenerated] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [mode, setMode] = useState("ai");
+  const [manualFile, setManualFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     api.get("/pdi/masters/inspectors").then((r) => setInspectors(r.data)).catch(() => {});
@@ -112,9 +115,39 @@ export default function GeneratePanel() {
     finally { setBusy(false); }
   };
 
+  const uploadManual = async () => {
+    if (!manualFile) return toast.error("Choose a PDI PDF file first");
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", manualFile);
+      fd.append("master_dispatch_id", dispatch?.id || "");
+      fd.append("part_name", selectedItem?.description || "");
+      fd.append("item_code", selectedItem?.part_number || "");
+      fd.append("lot_no", form.lot_no || "");
+      fd.append("inspector", form.inspector || "");
+      fd.append("approver", form.approver || "");
+      const r = await api.post("/pdi/manual-upload", fd);
+      setGenerated(r.data);
+      setPreviewOpen(true);
+      setManualFile(null);
+      toast.success(`Manual PDI ${r.data.report_no} uploaded${dispatch ? " & attached as Active PDI" : ""}`);
+    } catch (err) { toast.error(apiError(err)); }
+    finally { setUploading(false); }
+  };
+
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-5" data-testid="pdi-generate-panel">
       <div className="space-y-4">
+        <div className="flex gap-2" data-testid="pdi-mode-toggle">
+          {[["ai", "Generate via AI", Sparkle], ["manual", "Upload Manual PDI", UploadSimple]].map(([m, label, Icon]) => (
+            <button key={m} onClick={() => setMode(m)} data-testid={`pdi-mode-${m}`}
+                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm border transition-colors ${
+                      mode === m ? "border-primary/60 text-primary bg-primary/10 font-semibold" : "border-border text-muted-foreground hover:text-foreground"}`}>
+              <Icon size={14} weight={mode === m ? "fill" : "regular"} /> {label}
+            </button>
+          ))}
+        </div>
         <div className="border border-border bg-card rounded-sm p-4">
           <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-3">1 · Pick dispatch item (optional)</p>
           <div className="relative">
@@ -142,6 +175,7 @@ export default function GeneratePanel() {
           </div>
         </div>
 
+        {mode === "ai" && (
         <div className="border border-border bg-card rounded-sm p-4">
           <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-3">2 · PDI template</p>
           {template ? (
@@ -168,8 +202,29 @@ export default function GeneratePanel() {
             </>
           )}
         </div>
+        )}
       </div>
 
+      {mode === "manual" ? (
+      <div className="border border-border bg-card rounded-sm p-4 space-y-3" data-testid="pdi-manual-upload-card">
+        <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">2 · Upload PDI PDF</p>
+        <p className="text-xs text-muted-foreground">Upload a ready (scanned or externally prepared) PDI report. If a dispatch item is selected in step 1, it will be attached to that dispatch and set as the <b>Active PDI</b> — used by ASN automation and downloads.</p>
+        <div className="border border-dashed border-border rounded-sm p-4 bg-background">
+          <input type="file" accept=".pdf" data-testid="pdi-manual-file-input"
+                 onChange={(e) => setManualFile(e.target.files?.[0] || null)}
+                 className="text-xs file:mr-3 file:px-3 file:py-1.5 file:rounded-sm file:border-0 file:bg-primary/10 file:text-primary file:text-xs file:font-semibold file:cursor-pointer" />
+          {manualFile && <p className="text-[11px] text-muted-foreground mt-2">{manualFile.name} · {(manualFile.size / 1024).toFixed(0)} KB</p>}
+        </div>
+        <div className="border border-border rounded-sm px-3 py-2 bg-background text-xs" data-testid="pdi-manual-dispatch-info">
+          {dispatch
+            ? <>Attaching to: <b>{dispatch.invoice_number}</b> · {dispatch.customer_name} · {selectedItem?.part_number || selectedItem?.description}</>
+            : <span className="text-amber-500">No dispatch selected — the PDI will be saved to Reports history only.</span>}
+        </div>
+        <Button onClick={uploadManual} disabled={uploading || !manualFile} data-testid="pdi-manual-upload-btn" className="rounded-sm gap-1.5">
+          <UploadSimple size={15} /> {uploading ? "Uploading…" : dispatch ? "Upload & Attach as Active PDI" : "Upload PDI"}
+        </Button>
+      </div>
+      ) : (
       <div className="border border-border bg-card rounded-sm p-4 space-y-3">
         <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">3 · Report details</p>
         <div className="grid grid-cols-2 gap-3">
@@ -262,6 +317,7 @@ export default function GeneratePanel() {
           )}
         </div>
       </div>
+      )}
 
       <PdfPreviewDialog open={previewOpen} onClose={() => setPreviewOpen(false)}
                         title={generated ? `${generated.report_no} · ${generated.part_name}` : ""}

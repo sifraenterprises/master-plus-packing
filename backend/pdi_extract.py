@@ -188,7 +188,8 @@ async def _gemini_extract(pdf_bytes: bytes) -> list:
             return _parse_json(resp.text).get("pages") or []
         except Exception as e:
             last_err = e
-            await asyncio.sleep(4 * (attempt + 1))
+            wait = 30 * (attempt + 1) if "429" in str(e)[:60] else 4 * (attempt + 1)
+            await asyncio.sleep(wait)
     raise last_err
 
 
