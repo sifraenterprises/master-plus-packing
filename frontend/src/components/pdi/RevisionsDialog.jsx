@@ -41,7 +41,7 @@ export default function RevisionsDialog({ template, onClose, onRestored }) {
           {revisions.map((r) => (
             <div key={r.revision} className="border border-border rounded-sm px-3 py-2 flex items-center justify-between gap-2 bg-background" data-testid={`pdi-revision-${r.revision}`}>
               <div className="min-w-0">
-                <p className="text-xs font-bold flex items-center gap-1.5">Rev {r.revision} {r.revision === (template.revision || 1) && <Badge variant="outline" className="rounded-sm text-[8px] border-primary/40 text-primary">CURRENT</Badge>}</p>
+                <div className="text-xs font-bold flex items-center gap-1.5">Rev {r.revision} {r.revision === (template.revision || 1) && <Badge variant="outline" className="rounded-sm text-[8px] border-primary/40 text-primary">CURRENT</Badge>}</div>
                 <p className="text-[11px] text-muted-foreground truncate">{r.part_name} · {r.item_code} · {r.status}</p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
