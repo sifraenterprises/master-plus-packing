@@ -14,6 +14,7 @@ const numVal = (v) => (v === "" || v === null || v === undefined ? null : parseF
 export default function TemplateEditorDialog({ template, draft, uploadId, replaceUpload, onClose, onSaved }) {
   const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [duplicate, setDuplicate] = useState(null);
   const isDraft = !!draft;
   const src = template || draft;
   const multiPage = src ? (isDraft ? draft.page_end > draft.page_start : (src.pages || 1) > 1) || !!replaceUpload : false;
@@ -54,19 +55,25 @@ export default function TemplateEditorDialog({ template, draft, uploadId, replac
     status: form.status, rows: payloadRows(),
   });
 
-  const save = async () => {
+  const save = async (onDuplicate = "") => {
     setBusy(true);
     try {
       if (isDraft) {
-        await api.post("/pdi/templates", { ...basePayload(), upload_id: uploadId, page_start: draft.page_start, page_end: draft.page_end });
-        toast.success("Template saved to library");
+        const r = await api.post("/pdi/templates", { ...basePayload(), upload_id: uploadId, page_start: draft.page_start, page_end: draft.page_end, on_duplicate: onDuplicate });
+        if (r.data.skipped) toast.info(r.data.detail || "Skipped duplicate template");
+        else toast.success(onDuplicate === "replace" ? "Existing template replaced (new revision)" : "Template saved to library");
       } else {
         const extra = replaceUpload ? { upload_id: replaceUpload.uploadId, page_start: replaceUpload.pageStart, page_end: replaceUpload.pageEnd } : {};
         await api.put(`/pdi/templates/${template.id}`, { ...basePayload(), ...extra });
         toast.success(`Template saved (new revision${replaceUpload ? " · PDF replaced" : ""})`);
       }
       onSaved();
-    } catch (err) { toast.error(apiError(err)); }
+    } catch (err) {
+      const detail = err?.response?.status === 409 ? err.response.data?.detail : null;
+      if (detail?.code === "duplicate") {
+        setDuplicate(detail);
+      } else toast.error(apiError(err));
+    }
     finally { setBusy(false); }
   };
 
@@ -169,11 +176,26 @@ export default function TemplateEditorDialog({ template, draft, uploadId, replac
           </Button>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={onClose} className="rounded-sm">Cancel</Button>
-            <Button onClick={save} disabled={busy} data-testid="pdi-editor-save" className="rounded-sm gap-1.5">
+            <Button onClick={() => save()} disabled={busy} data-testid="pdi-editor-save" className="rounded-sm gap-1.5">
               <FloppyDisk size={15} /> {busy ? "Saving…" : isDraft ? "Save to Library" : "Save (new revision)"}
             </Button>
           </div>
         </div>
+
+        {duplicate && (
+          <div className="border border-amber-500/40 bg-amber-500/5 rounded-sm p-3 space-y-2" data-testid="pdi-duplicate-prompt">
+            <p className="text-xs font-semibold text-amber-500">Duplicate detected</p>
+            <p className="text-xs text-muted-foreground">A template with the same identity already exists: <b>{duplicate.existing}</b>. What do you want to do?</p>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" disabled={busy} onClick={() => { setDuplicate(null); save("replace"); }}
+                      data-testid="pdi-duplicate-replace" className="rounded-sm h-7 text-xs">Replace Existing</Button>
+              <Button size="sm" variant="secondary" disabled={busy} onClick={() => { setDuplicate(null); save("keep"); }}
+                      data-testid="pdi-duplicate-keep" className="rounded-sm h-7 text-xs">Keep Both</Button>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setDuplicate(null); save("skip"); }}
+                      data-testid="pdi-duplicate-skip" className="rounded-sm h-7 text-xs">Skip</Button>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

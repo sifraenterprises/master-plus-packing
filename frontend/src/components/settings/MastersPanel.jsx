@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash, Factory, Truck, UserCircle, SealCheck } from "@phosphor-icons/react";
+import { Plus, Trash, Factory, Truck, UserCircle, SealCheck, Files } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import api, { apiError } from "@/lib/api";
 import { PeopleMasterList } from "./PeopleMasterList";
 import { DocumentTypesPanel } from "./DocumentTypesPanel";
+import TemplateLibrary from "@/components/pdi/TemplateLibrary";
 
 const MasterList = ({ title, icon: Icon, endpoint, testKey }) => {
   const [items, setItems] = useState([]);
@@ -78,5 +79,15 @@ export const MastersPanel = () => (
       <PeopleMasterList title="PDI Approvers" icon={SealCheck} kind="approvers" />
     </div>
     <DocumentTypesPanel />
+    <div className="border border-border bg-card rounded-sm p-4" data-testid="masters-pdi-templates">
+      <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-1 flex items-center gap-1.5">
+        <Files size={14} className="text-primary" /> PDI Template Master
+      </p>
+      <p className="text-xs text-muted-foreground mb-4">
+        Central PDI template library — the single source of truth used by the AI PDI Generator, Master Dispatch and ASN automation.
+        Add, edit, replace, import/export, restore revisions and bulk-manage templates here without any code change.
+      </p>
+      <TemplateLibrary />
+    </div>
   </div>
 );

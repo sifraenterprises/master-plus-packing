@@ -1,0 +1,41 @@
+{
+  "summary": "PDI Template Master Management (iteration 19) end-to-end verified. Backend pytest: 20/20 passing, 1 intentionally skipped (create-on_duplicate path — needs OCR upload_id, Gemini quota exhausted, per request). Coverage in /app/backend/tests/test_pdi_masters.py: SECURITY (dispatch=403 on bulk/bulk-reocr/export/import/duplicate/restore, 200 on GET /pdi/templates), LIST METADATA (created_at/updated_at/created_by/updated_by present, status=inactive filter works), DUPLICATE (/{id}/duplicate creates '(Copy)' with revision=1, empty item_code, created_by='admin'; verified via GET), RESTORE (/{id}/revisions/{rev}/restore bumps current revision, sets updated_by, old revision snapshot retained on template GUIDE PIN 6a57281ebcf851ee45eb6b3c), BULK (activate/deactivate flips status; delete on USED template — reused GUIDE PIN which is referenced by pdi_reports — falls back to deactivated=1/deleted=0; delete on UNUSED duplicate returns deleted=1 and GET→404; unknown action=400), BULK-REOCR (empty ids=400; with valid id: state machine running true→false, processed=1, errors populated with 429 RESOURCE_EXHAUSTED as expected; total ~3 min per template due to Gemini SDK backoff), EXPORT/IMPORT (single-id export returns zip with library.json + pdfs/ entries; export-all returns zip magic 'PK'; import merges — updated/imported counts >=1). Frontend Playwright: Settings→Masters shows masters-pdi-templates hosting full pdi-template-library with columns Created/Updated (verified: ['','#','Part Name','Item Code','Drg No','Rows','Rev','Status','Created','Updated','Actions']), 25 row checkboxes + pdi-select-all=26, Export All / Import / Upload New Template / status filter all present. Bulk toolbar appears after selecting 2 rows; bulk deactivate then bulk activate completed successfully. Duplicate action created 1 '(Copy)' row visible via search; 1st delete click deactivated/perm-deleted, 2nd delete removed it fully (0 remaining). Revisions dialog opened with 14 Restore buttons on GUIDE PIN. PDI Module → Template Library tab renders the SAME component with identical columns (single source of truth confirmed). DISPATCH USER (read-only): can view library (168 templates listed), but pdi-select-all / pdi-upload-template-btn / pdi-export-library-btn / pdi-import-library-btn all HIDDEN; 0 duplicate/edit/delete row buttons and 0 row checkboxes — read-only enforcement correct on both API (403) and UI. Cleanup: all created (Copy) templates deleted, all deactivated real templates reactivated.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "PDI RevisionsDialog", "issues": ["React validateDOMNesting console warning: a <div> (Badge) is rendered as a descendant of a <p> inside the revision list item. Renders correctly but produces a dev-mode console warning. Wrap the badge in a <span>-based parent or change the outer <p> to a <div>. Non-blocking."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pdi_masters.py",
+    "/app/test_reports/pytest/iter19_pdi_masters.xml"
+  ],
+  "action_items": [
+    "Minor: fix DOM nesting warning in RevisionsDialog.jsx (Badge inside <p>)."
+  ],
+  "critical_code_review_comments": [
+    "pdi_routes.duplicate_template correctly clones the source template with revision=1, blank item_code, '(Copy)' suffix, created_by set, and calls save_template_revision for the initial snapshot.",
+    "pdi_routes.restore_revision restores by writing snapshot fields as a NEW revision (revision += 1) and preserves the older snapshot in pdi_template_revisions — verified against template GUIDE PIN 6a57281ebcf851ee45eb6b3c (rev advanced from 11→12 during this test run).",
+    "bulk_templates.delete path uses pdi_reports.count_documents({template_id}) to decide fallback — matches spec ('safe delete = deactivate by default').",
+    "bulk-reocr correctly returns 400 for empty ids and 409 when already running (state guard). Errors accumulate per-template so partial success is reported.",
+    "export_templates builds zip in a temp file with library.json + pdfs/; source pdf resolution via resolve_source_pdf. Good.",
+    "import_templates dedupes by item_code and falls back to part_name+drg_no; existing templates get a new revision (updated_by set), unknown ones become imported with revision=1.",
+    "Frontend TemplateLibrary hides checkboxes / bulk toolbar / write actions / upload/export/import when !isAdmin — read-only mode verified with dispatch user.",
+    "Frontend single-source-of-truth: same <TemplateLibrary /> component is rendered inside MastersPanel (Settings→Masters) and PDI module Template Library tab — confirmed identical columns and data on both.",
+    "Minor: RevisionsDialog nests Badge (<div>) inside <p> — triggers React validateDOMNesting warning.",
+    "Minor: /pdi/templates page_size not honored beyond ~25 (documented already in iter17).",
+    "Note: bulk-reocr can take ~3 minutes per template because Gemini SDK does internal exponential backoff before surfacing 429; the test polls up to 5 min which is fine, but end users hitting quota should get a faster failure — consider setting a shorter Gemini client timeout / disabling SDK retry."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_pdi_masters.py"
+  ],
+  "success_rate": {"backend": "100% (20/20, 1 intentionally skipped)", "frontend": "100% of requested flows"},
+  "test_credentials": "admin / 5@Sohangso, dispatch / 5@Grewal",
+  "seed_data_creation": "None persisted. Any '(Copy)' templates created were removed via the delete-twice flow; deactivated templates were reactivated. GUIDE PIN revision advanced by 1 (test_restore_bumps_revision restored an older rev as a new rev) — expected per spec; older revision snapshot still retained.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend: reocr-status takes ~3 min per template with quota exhausted; poll for at least 5 min. Auth login returns {'token': ..., 'user': ...} — NOT access_token. Frontend testids on TemplateLibrary: pdi-select-{page_number}, pdi-select-all, pdi-bulk-{activate|deactivate|reocr|export|delete}, pdi-template-{duplicate|edit|delete|revisions|toggle|replace|view}-{page_number}, pdi-revisions-dialog, pdi-revision-restore-{rev}, pdi-import-library-input, pdi-export-library-btn, pdi-import-library-btn, pdi-upload-template-btn, pdi-library-status-filter, pdi-library-search. Masters section testid: masters-pdi-templates. Library route in PDI module: /portal/modules/pdi → click 'Template Library' tab. Dispatch role hides all write controls at UI level; backend enforces 403.",
+  "rca of the issue": "N/A — no critical bugs found. Only one minor React DOM nesting console warning in RevisionsDialog (Badge/<div> inside <p>). Fix: change the wrapping <p> around revision meta text to a <div>, or wrap the Badge in an inline element."
+}

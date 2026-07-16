@@ -169,6 +169,8 @@ async def startup():
     await db.pdi_master_library.create_index("page_number", unique=True)
     await db.pdi_master_library.create_index("item_code")
     await db.pdi_master_library.create_index("part_name")
+    await db.pdi_master_library.create_index("drg_no")
+    await db.pdi_master_library.create_index("status")
     await db.pdi_reports.create_index("report_no")
     await db.pdi_reports.create_index("invoice_number")
     await db.pdi_reports.create_index("item_code")

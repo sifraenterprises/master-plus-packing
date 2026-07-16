@@ -32,6 +32,8 @@ class PdiTemplate(BaseDocument):
     effective_from: str = ""
     effective_to: str = ""
     status: str = "active"  # active | inactive
+    created_by: str = ""
+    updated_by: str = ""
     created_at: str = Field(default_factory=lambda: utcnow().isoformat())
     updated_at: str = Field(default_factory=lambda: utcnow().isoformat())
 
@@ -50,6 +52,16 @@ class PdiTemplateCreate(BaseModel):
     effective_from: str = ""
     effective_to: str = ""
     status: str = "active"
+    on_duplicate: str = ""  # "" | replace | keep | skip
+
+
+class PdiBulkAction(BaseModel):
+    action: str  # activate | deactivate | delete
+    ids: list[str] = []
+
+
+class PdiBulkReocr(BaseModel):
+    ids: list[str] = []
 
 
 class PdiTemplateUpdate(BaseModel):

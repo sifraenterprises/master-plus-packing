@@ -12,7 +12,7 @@ from database import db
 from models import utcnow
 from auth import get_current_user, require_admin, log_activity
 from pdi_models import (PdiTemplate, PdiTemplateCreate, PdiTemplateUpdate, PdiDraftPreview,
-                        PdiGenerateInput, PdiReport)
+                        PdiGenerateInput, PdiReport, PdiBulkAction, PdiBulkReocr)
 from pdi_extract import (import_master_pdf, run_state, MASTER_PDF, UPLOAD_DIR,
                          process_upload, extract_template_pdf, save_template_revision)
 from pdi_generate import generate_observations, render_report_pdf, REPORT_DIR, resolve_source_pdf
@@ -134,12 +134,50 @@ def _sample_pdf(template: dict) -> Response:
 
 # ---------- Templates ----------
 
+# ---------- Duplicate detection (item_code primary, else part_name + drg_no) ----------
+
+async def _find_duplicate(item_code: str, part_name: str, drg_no: str, exclude_id=None):
+    query = None
+    if (item_code or "").strip():
+        query = {"item_code": item_code.strip()}
+    elif (part_name or "").strip() and (drg_no or "").strip():
+        query = {"part_name": part_name.strip(), "drg_no": drg_no.strip()}
+    if not query:
+        return None
+    if exclude_id is not None:
+        query["_id"] = {"$ne": exclude_id}
+    return await db.pdi_master_library.find_one(query)
+
+
 @router.post("/templates")
 async def create_template(payload: PdiTemplateCreate, user: dict = Depends(require_admin)):
+    dup = await _find_duplicate(payload.item_code, payload.part_name, payload.drg_no)
+    if dup and payload.on_duplicate == "skip":
+        return {"skipped": True, "existing_id": str(dup["_id"]),
+                "detail": f"Skipped — duplicate of {dup.get('part_name')} ({dup.get('item_code') or dup.get('drg_no')})"}
+    if dup and payload.on_duplicate not in ("replace", "keep"):
+        raise HTTPException(status_code=409, detail={
+            "code": "duplicate", "existing_id": str(dup["_id"]),
+            "existing": f"{dup.get('part_name')} · {dup.get('item_code') or '—'} · rev {dup.get('revision', 1)}"})
     try:
         source_pdf, layouts = extract_template_pdf(payload.upload_id, payload.page_start, payload.page_end)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    if dup and payload.on_duplicate == "replace":
+        updates = {"part_name": payload.part_name, "item_code": payload.item_code, "drg_no": payload.drg_no,
+                   "rows": [r.model_dump() for r in payload.rows], "layouts": layouts, "pages": len(layouts),
+                   "source_pdf": source_pdf,
+                   "mapped_parts": [p.strip() for p in payload.mapped_parts if p.strip()],
+                   "customer": payload.customer, "plant": payload.plant,
+                   "effective_from": payload.effective_from, "effective_to": payload.effective_to,
+                   "revision": dup.get("revision", 1) + 1,
+                   "updated_by": user["username"], "updated_at": utcnow().isoformat()}
+        await db.pdi_master_library.update_one({"_id": dup["_id"]}, {"$set": updates})
+        saved = await db.pdi_master_library.find_one({"_id": dup["_id"]})
+        await save_template_revision(saved, user["username"])
+        await log_activity(user["username"], "pdi_template_replaced",
+                           f"{payload.part_name} · {payload.item_code} · rev {saved.get('revision')}", "pdi")
+        return PdiTemplate.from_mongo(saved).model_dump(exclude={"layouts"})
     next_page = await db.pdi_master_library.find_one({}, sort=[("page_number", -1)], projection={"page_number": 1})
     template = PdiTemplate(
         page_number=(next_page or {}).get("page_number", 0) + 1,
@@ -148,7 +186,8 @@ async def create_template(payload: PdiTemplateCreate, user: dict = Depends(requi
         revision=1, mapped_parts=[p.strip() for p in payload.mapped_parts if p.strip()],
         customer=payload.customer, plant=payload.plant,
         effective_from=payload.effective_from, effective_to=payload.effective_to,
-        status=payload.status if payload.status in ("active", "inactive") else "active")
+        status=payload.status if payload.status in ("active", "inactive") else "active",
+        created_by=user["username"], updated_by=user["username"])
     result = await db.pdi_master_library.insert_one(template.to_mongo())
     doc = await db.pdi_master_library.find_one({"_id": result.inserted_id})
     await save_template_revision(doc, user["username"])
@@ -173,11 +212,248 @@ async def list_templates(q: str = "", status: str = "", page: int = 1, limit: in
             "items": [PdiTemplate.from_mongo(d).model_dump(exclude={"layouts"}) for d in docs]}
 
 
+# ---------- Bulk operations, export/import (fixed paths BEFORE /{template_id}) ----------
+
+reocr_state = {"running": False, "total": 0, "processed": 0, "updated": 0,
+               "errors": [], "started_at": None, "finished_at": None}
+
+
+@router.post("/templates/bulk")
+async def bulk_templates(payload: PdiBulkAction, user: dict = Depends(require_admin)):
+    if payload.action not in ("activate", "deactivate", "delete"):
+        raise HTTPException(status_code=400, detail="Unknown bulk action")
+    results = {"activated": 0, "deactivated": 0, "deleted": 0, "skipped": 0}
+    now = utcnow().isoformat()
+    for tid in payload.ids:
+        if not ObjectId.is_valid(tid):
+            results["skipped"] += 1
+            continue
+        oid = ObjectId(tid)
+        if payload.action in ("activate", "deactivate"):
+            status = "active" if payload.action == "activate" else "inactive"
+            r = await db.pdi_master_library.update_one(
+                {"_id": oid}, {"$set": {"status": status, "updated_at": now, "updated_by": user["username"]}})
+            results[payload.action + "d"] += r.modified_count
+        else:
+            used = await db.pdi_reports.count_documents({"template_id": tid})
+            if used:
+                await db.pdi_master_library.update_one(
+                    {"_id": oid}, {"$set": {"status": "inactive", "updated_at": now, "updated_by": user["username"]}})
+                results["deactivated"] += 1
+            else:
+                d = await db.pdi_master_library.delete_one({"_id": oid})
+                await db.pdi_template_revisions.delete_many({"template_id": tid})
+                results["deleted"] += d.deleted_count
+    await log_activity(user["username"], f"pdi_bulk_{payload.action}",
+                       f"{len(payload.ids)} template(s) — {results}", "pdi")
+    return results
+
+
+@router.post("/templates/bulk-reocr")
+async def bulk_reocr(payload: PdiBulkReocr, user: dict = Depends(require_admin)):
+    if reocr_state["running"]:
+        raise HTTPException(status_code=409, detail="A re-OCR run is already in progress")
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="No templates selected")
+    _bg(_run_bulk_reocr(list(payload.ids), user["username"]))
+    await log_activity(user["username"], "pdi_bulk_reocr_started", f"{len(payload.ids)} template(s)", "pdi")
+    return {"status": "started", "total": len(payload.ids)}
+
+
+@router.get("/templates/reocr-status")
+async def reocr_status(user: dict = Depends(get_current_user)):
+    return reocr_state
+
+
+async def _run_bulk_reocr(ids: list, username: str):
+    from pdi_extract import _gemini_extract, _clean_row
+    from pdi_generate import resolve_source_pdf
+    reocr_state.update({"running": True, "total": len(ids), "processed": 0, "updated": 0,
+                        "errors": [], "started_at": utcnow().isoformat(), "finished_at": None})
+    for tid in ids:
+        try:
+            doc = await db.pdi_master_library.find_one({"_id": ObjectId(tid)})
+            if not doc:
+                raise ValueError("template not found")
+            path = resolve_source_pdf(doc.get("source_pdf", ""))
+            if not path or not Path(path).exists():
+                raise ValueError("source PDF missing")
+            pages = await _gemini_extract(Path(path).read_bytes())
+            rows = []
+            meta = {}
+            for p in pages:
+                pg = int(p.get("page") or 1)
+                if not meta and (p.get("part_name") or p.get("item_code")):
+                    meta = p
+                rows.extend([_clean_row(r, pg) for r in (p.get("rows") or [])])
+            if not rows:
+                raise ValueError("OCR returned no rows")
+            updates = {"rows": rows, "revision": doc.get("revision", 1) + 1,
+                       "updated_at": utcnow().isoformat(), "updated_by": username}
+            for k in ("part_name", "item_code", "drg_no"):
+                if not doc.get(k) and meta.get(k):
+                    updates[k] = str(meta[k]).strip()
+            await db.pdi_master_library.update_one({"_id": doc["_id"]}, {"$set": updates})
+            saved = await db.pdi_master_library.find_one({"_id": doc["_id"]})
+            await save_template_revision(saved, username)
+            reocr_state["updated"] += 1
+        except Exception as e:
+            reocr_state["errors"].append(f"{tid}: {str(e)[:120]}")
+        reocr_state["processed"] += 1
+    reocr_state["running"] = False
+    reocr_state["finished_at"] = utcnow().isoformat()
+    await log_activity(username, "pdi_bulk_reocr_finished",
+                       f"{reocr_state['updated']}/{reocr_state['total']} updated, {len(reocr_state['errors'])} errors", "pdi")
+
+
+@router.get("/templates/export")
+async def export_templates(ids: str = "", user: dict = Depends(require_admin)):
+    import zipfile, tempfile, json as _json
+    from pdi_generate import resolve_source_pdf
+    query = {}
+    if ids.strip():
+        oids = [ObjectId(i) for i in ids.split(",") if ObjectId.is_valid(i)]
+        query = {"_id": {"$in": oids}}
+    docs = await db.pdi_master_library.find(query).sort("page_number", 1).to_list(5000)
+    tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+    manifest = []
+    with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_DEFLATED) as zf:
+        added = set()
+        for d in docs:
+            path = resolve_source_pdf(d.get("source_pdf", ""))
+            pdf_name = Path(path).name if path else ""
+            if pdf_name and Path(path).exists() and pdf_name not in added:
+                zf.write(path, f"pdfs/{pdf_name}")
+                added.add(pdf_name)
+            entry = {k: v for k, v in d.items() if k != "_id"}
+            entry["id"] = str(d["_id"])
+            entry["source_pdf_file"] = pdf_name
+            entry.pop("source_pdf", None)
+            manifest.append(entry)
+        zf.writestr("library.json", _json.dumps({"exported_at": utcnow().isoformat(),
+                                                 "exported_by": user["username"],
+                                                 "count": len(manifest),
+                                                 "templates": manifest}, default=str))
+    await log_activity(user["username"], "pdi_library_exported", f"{len(manifest)} template(s)", "pdi")
+    fname = f"pdi_template_library_{utcnow().strftime('%Y%m%d_%H%M')}.zip"
+    return FileResponse(tmp.name, media_type="application/zip", filename=fname)
+
+
+@router.post("/templates/import")
+async def import_templates(file: UploadFile = File(...), user: dict = Depends(require_admin)):
+    import zipfile, tempfile, json as _json
+    from pdi_extract import PDI_DIR
+    if not (file.filename or "").lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Upload the exported .zip library file")
+    tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+    tmp.write(await file.read())
+    tmp.close()
+    try:
+        zf = zipfile.ZipFile(tmp.name)
+        data = _json.loads(zf.read("library.json"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid library zip — library.json missing or unreadable")
+    imported, updated, skipped, errors = 0, 0, 0, []
+    seen_keys = set()
+    next_page_doc = await db.pdi_master_library.find_one({}, sort=[("page_number", -1)], projection={"page_number": 1})
+    next_page = (next_page_doc or {}).get("page_number", 0) + 1
+    now = utcnow().isoformat()
+    for t in data.get("templates", []):
+        try:
+            key = (t.get("item_code") or "").strip() or f"{(t.get('part_name') or '').strip()}::{(t.get('drg_no') or '').strip()}"
+            if key in seen_keys:
+                skipped += 1
+                continue
+            seen_keys.add(key)
+            pdf_name = t.get("source_pdf_file", "")
+            source_pdf = ""
+            if pdf_name:
+                try:
+                    content = zf.read(f"pdfs/{pdf_name}")
+                    dest = PDI_DIR / f"imp_{uuid.uuid4().hex}.pdf"
+                    dest.write_bytes(content)
+                    source_pdf = str(dest)
+                except KeyError:
+                    pass
+            fields = {k: t.get(k) for k in ("part_name", "item_code", "drg_no", "rows", "layouts",
+                                            "pages", "mapped_parts", "customer", "plant",
+                                            "effective_from", "effective_to", "status") if t.get(k) is not None}
+            dup = await _find_duplicate(t.get("item_code", ""), t.get("part_name", ""), t.get("drg_no", ""))
+            if dup:
+                if source_pdf:
+                    fields["source_pdf"] = source_pdf
+                fields["revision"] = dup.get("revision", 1) + 1
+                fields["updated_at"] = now
+                fields["updated_by"] = user["username"]
+                await db.pdi_master_library.update_one({"_id": dup["_id"]}, {"$set": fields})
+                saved = await db.pdi_master_library.find_one({"_id": dup["_id"]})
+                await save_template_revision(saved, user["username"])
+                updated += 1
+            else:
+                if not source_pdf:
+                    skipped += 1
+                    errors.append(f"{key}: no PDF in zip — skipped")
+                    continue
+                fields.update({"page_number": next_page, "source_pdf": source_pdf, "revision": 1,
+                               "created_at": now, "updated_at": now,
+                               "created_by": user["username"], "updated_by": user["username"],
+                               "status": fields.get("status") or "active",
+                               "mapped_parts": fields.get("mapped_parts") or []})
+                next_page += 1
+                result = await db.pdi_master_library.insert_one(fields)
+                saved = await db.pdi_master_library.find_one({"_id": result.inserted_id})
+                await save_template_revision(saved, user["username"])
+                imported += 1
+        except Exception as e:
+            errors.append(f"{t.get('item_code') or t.get('part_name')}: {str(e)[:100]}")
+    await log_activity(user["username"], "pdi_library_imported",
+                       f"{imported} new, {updated} updated, {skipped} skipped", "pdi")
+    return {"imported": imported, "updated": updated, "skipped": skipped, "errors": errors[:20]}
+
+
 async def _template_or_404(template_id: str) -> dict:
     doc = await db.pdi_master_library.find_one({"_id": _oid(template_id, "template")})
     if not doc:
         raise HTTPException(status_code=404, detail="Template not found")
     return doc
+
+
+@router.post("/templates/{template_id}/duplicate")
+async def duplicate_template(template_id: str, user: dict = Depends(require_admin)):
+    doc = await _template_or_404(template_id)
+    next_page = await db.pdi_master_library.find_one({}, sort=[("page_number", -1)], projection={"page_number": 1})
+    now = utcnow().isoformat()
+    copy = {k: v for k, v in doc.items() if k != "_id"}
+    copy.update({"page_number": (next_page or {}).get("page_number", 0) + 1,
+                 "part_name": f"{doc.get('part_name', '')} (Copy)", "item_code": "",
+                 "revision": 1, "created_at": now, "updated_at": now,
+                 "created_by": user["username"], "updated_by": user["username"]})
+    result = await db.pdi_master_library.insert_one(copy)
+    saved = await db.pdi_master_library.find_one({"_id": result.inserted_id})
+    await save_template_revision(saved, user["username"])
+    await log_activity(user["username"], "pdi_template_duplicated",
+                       f"{doc.get('part_name')} → {copy['part_name']}", "pdi")
+    return PdiTemplate.from_mongo(saved).model_dump(exclude={"layouts"})
+
+
+@router.post("/templates/{template_id}/revisions/{revision}/restore")
+async def restore_revision(template_id: str, revision: int, user: dict = Depends(require_admin)):
+    doc = await _template_or_404(template_id)
+    snap = await db.pdi_template_revisions.find_one({"template_id": template_id, "revision": revision})
+    if not snap:
+        raise HTTPException(status_code=404, detail=f"Revision {revision} not found")
+    updates = {k: snap.get(k) for k in ("part_name", "item_code", "drg_no", "rows", "layouts", "pages",
+                                        "source_pdf", "mapped_parts", "customer", "plant",
+                                        "effective_from", "effective_to") if snap.get(k) is not None}
+    updates["revision"] = doc.get("revision", 1) + 1
+    updates["updated_at"] = utcnow().isoformat()
+    updates["updated_by"] = user["username"]
+    await db.pdi_master_library.update_one({"_id": doc["_id"]}, {"$set": updates})
+    saved = await db.pdi_master_library.find_one({"_id": doc["_id"]})
+    await save_template_revision(saved, user["username"])
+    await log_activity(user["username"], "pdi_template_restored",
+                       f"{doc.get('part_name')} — rev {revision} restored as rev {updates['revision']}", "pdi")
+    return PdiTemplate.from_mongo(saved).model_dump(exclude={"layouts"})
 
 
 @router.get("/templates/{template_id}")
