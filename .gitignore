@@ -122,3 +122,9 @@ backend/uploads/*.pdf
 backend/uploads/md_invoices/
 backend/uploads/master_dispatch/
 backend/venv-audit/lib/python3.11/site-packages/playwright/driver/node
+# Desktop Worker
+desktop-worker/downloads/
+desktop-worker/screenshots/
+desktop-worker/logs/
+desktop-worker/*.log/
+desktop-worker/*.log
