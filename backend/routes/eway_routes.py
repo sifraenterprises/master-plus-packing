@@ -17,6 +17,11 @@ from automation import (
     load_selectors, save_selectors, validate_portal,
 )
 from pathlib import Path
+from routes.worker_routes import (
+    create_automation_job,
+    desktop_execution_enabled,
+    require_desktop_worker,
+)
 
 router = APIRouter(prefix="/eway", tags=["eway"])
 logger = logging.getLogger(__name__)
@@ -212,11 +217,38 @@ async def process_batch(ids: list[str], run_id: str, user: str, force_mode: str 
 
 
 async def start_run(background_tasks: BackgroundTasks, ids: list[str], user: str):
-    await get_mode()  # blocks in maintenance / emergency stop before scheduling
+    mode = await get_mode()  # blocks in maintenance / emergency stop before scheduling
     if run_state["running"]:
         raise HTTPException(status_code=409, detail="An automation run is already in progress")
     if not ids:
         raise HTTPException(status_code=400, detail="No records to process")
+
+    if desktop_execution_enabled():
+        is_test = mode != "live"
+        await require_desktop_worker("eway_bill_entry", allow_offline_test=True, test_mode=is_test)
+        jobs, skipped = [], []
+        for rec_id in ids:
+            md = await db.master_dispatch.find_one({"_id": ObjectId(rec_id)}) if ObjectId.is_valid(rec_id) else None
+            if not md:
+                continue
+            sub = await get_submission(rec_id)
+            payload, skip_reason = eway_prepare(md, sub)
+            if skip_reason:
+                skipped.append({"record_id": rec_id, "reason": skip_reason})
+                await set_submission(rec_id, {"error": f"Skipped: {skip_reason}"})
+                continue
+            job = await create_automation_job(
+                job_type="eway_bill_entry", payload=payload, source_record_id=rec_id,
+                created_by=user, test_mode=is_test, priority=70,
+            )
+            await set_submission(rec_id, {
+                "status": "Queued", "desktop_job_id": job["id"], "error": None,
+                "submitted_by": user, "dispatch_no": md.get("dispatch_no", rec_id),
+            })
+            jobs.append(job)
+        return {"execution": "desktop", "queued": len(jobs), "jobs": jobs,
+                "skipped": skipped, "module": "eway"}
+
     run_id = str(uuid.uuid4())
     run_state.update({"running": True, "run_id": run_id, "module": "eway",
                       "total": len(ids), "processed": 0, "started_at": now_iso()})
@@ -398,6 +430,19 @@ async def eway_update_selectors(payload: dict, user: dict = Depends(require_admi
 async def eway_portal_validate(req: ValidateRequest, user: dict = Depends(require_admin)):
     if run_state["running"]:
         raise HTTPException(status_code=409, detail="An automation run is already in progress")
+    if desktop_execution_enabled():
+        mode = await get_mode()
+        is_test = mode != "live"
+        await require_desktop_worker("portal_validation", allow_offline_test=False, test_mode=is_test)
+        job = await create_automation_job(
+            job_type="portal_validation",
+            payload={"attempt_login": req.attempt_login, "dry_run_fill": req.dry_run_fill},
+            source_record_id="portal_validation", created_by=user["username"],
+            test_mode=False, priority=10,
+        )
+        return {"queued": True, "execution": "desktop", "job": job, "results": [],
+                "passed": 0, "total": 0, "all_ok": False, "full_validation": False}
+
     headless = os.environ.get("AUTOMATION_HEADLESS", "true").lower() == "true"
     log = make_logger(str(uuid.uuid4()), "portal_validation")
     results = await validate_portal(attempt_login=req.attempt_login, headless=headless, log=log,

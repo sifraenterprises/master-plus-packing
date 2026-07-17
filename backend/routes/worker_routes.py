@@ -23,6 +23,60 @@ def now_iso() -> str:
     return utcnow().isoformat()
 
 
+
+def portal_execution_mode() -> str:
+    mode = os.environ.get("PORTAL_EXECUTION_MODE", "local").strip().lower()
+    return mode if mode in {"desktop", "local"} else "local"
+
+
+def desktop_execution_enabled() -> bool:
+    return portal_execution_mode() == "desktop"
+
+
+async def compatible_worker_online(job_type: str = "") -> bool:
+    cutoff = utcnow() - timedelta(seconds=90)
+    workers = await db.automation_workers.find({"status": "online"}).to_list(50)
+    for worker in workers:
+        try:
+            from datetime import datetime
+            heartbeat = datetime.fromisoformat(worker.get("last_heartbeat", ""))
+        except Exception:
+            continue
+        capabilities = set(worker.get("capabilities") or [])
+        if heartbeat >= cutoff and (not job_type or job_type in capabilities):
+            return True
+    return False
+
+
+async def require_desktop_worker(job_type: str, *, allow_offline_test: bool = False,
+                                 test_mode: bool = False) -> None:
+    if allow_offline_test and test_mode:
+        return
+    if not await compatible_worker_online(job_type):
+        raise HTTPException(
+            status_code=503,
+            detail="Desktop Automation Worker is offline. Start OFFICE-PC-01 and retry.",
+        )
+
+
+async def create_automation_job(
+    *, job_type: str, payload: dict[str, Any], source_record_id: str,
+    created_by: str, test_mode: bool, priority: int = 100,
+) -> dict:
+    if job_type not in JOB_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported job type: {job_type}")
+    timestamp = now_iso()
+    doc = {
+        "job_id": str(uuid.uuid4()), "job_type": job_type, "status": "pending",
+        "payload": payload, "source_record_id": source_record_id,
+        "test_mode": bool(test_mode), "priority": priority, "attempts": 0,
+        "progress": 0, "message": "Queued", "logs": [], "worker_name": "",
+        "created_by": created_by, "created_at": timestamp, "updated_at": timestamp,
+    }
+    inserted = await db.automation_jobs.insert_one(doc)
+    return serialize(await db.automation_jobs.find_one({"_id": inserted.inserted_id}))
+
+
 def serialize(doc: dict | None) -> dict | None:
     if not doc:
         return None
@@ -192,16 +246,14 @@ async def fail_job(job_id: str, payload: JobFailInput, worker_name: str,
 async def create_job(payload: JobCreateInput, user: dict = Depends(get_current_user)):
     if payload.job_type not in JOB_TYPES:
         raise HTTPException(status_code=400, detail=f"Unsupported job type: {payload.job_type}")
-    timestamp = now_iso()
-    doc = {
-        "job_id": str(uuid.uuid4()), "job_type": payload.job_type, "status": "pending",
-        "payload": payload.payload, "source_record_id": payload.source_record_id,
-        "test_mode": payload.test_mode, "priority": payload.priority, "attempts": 0,
-        "progress": 0, "message": "Queued", "logs": [], "worker_name": "",
-        "created_by": user.get("username", "admin"), "created_at": timestamp, "updated_at": timestamp,
-    }
-    inserted = await db.automation_jobs.insert_one(doc)
-    return serialize(await db.automation_jobs.find_one({"_id": inserted.inserted_id}))
+    return await create_automation_job(
+        job_type=payload.job_type,
+        payload=payload.payload,
+        source_record_id=payload.source_record_id,
+        created_by=user.get("username", "admin"),
+        test_mode=payload.test_mode,
+        priority=payload.priority,
+    )
 
 
 @router.get("/status")
