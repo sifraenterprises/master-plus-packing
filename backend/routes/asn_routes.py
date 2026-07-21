@@ -18,6 +18,11 @@ from models import utcnow
 from auth import get_current_user, log_activity
 from alerts import send_alert
 from automation import ASNAutomation, AutomationError, AsnValidationError, DropdownMatchError, BatchAllocationError, SCREENSHOT_DIR
+from routes.worker_routes import (
+    create_automation_job,
+    desktop_execution_enabled,
+    require_desktop_worker,
+)
 
 router = APIRouter(prefix="/asn", tags=["asn"])
 logger = logging.getLogger(__name__)
@@ -413,6 +418,49 @@ async def _start(background_tasks: BackgroundTasks, ids: list[str], user: str):
     if not runnable:
         detail = "; ".join(f"{b['invoice_no']}: missing {', '.join(b['missing'])}" for b in blocked) or "No valid records"
         raise HTTPException(status_code=400, detail=f"ASN blocked — {detail}")
+
+    if desktop_execution_enabled():
+        mode = await get_mode()
+        is_test = mode != "live"
+        await require_desktop_worker("asn_creation", allow_offline_test=True, test_mode=is_test)
+        jobs = []
+        for rec_id in runnable:
+            doc = await db.asn_creation.find_one({"_id": ObjectId(rec_id)})
+            if not doc:
+                continue
+            payload = {
+                "po_number": doc.get("po_number", ""),
+                "invoice_no": doc.get("invoice_no", ""),
+                "invoice_date": to_dmy(doc.get("invoice_date", "")),
+                "basic_amount": doc.get("basic_amount", 0),
+                "total_amount": doc.get("total_amount", 0),
+                "cgst": doc.get("cgst", 0), "sgst": doc.get("sgst", 0),
+                "igst": doc.get("igst", 0), "no_of_cases": doc.get("no_of_cases", 0),
+                "transporter": doc.get("transporter", ""), "items": doc.get("items", []),
+                "pdi_path": doc.get("pdi_file_path", ""),
+                "document_key": "pdi",
+                "batch_allocations": {
+                    allocation.get("part_number"): [{
+                        "batch_no": allocation.get("batch_number"),
+                        "allocate_qty": allocation.get("allocated_quantity", 0),
+                        "consider": allocation.get("batch_considerable") == "Yes",
+                    }]
+                    for allocation in (doc.get("batch_allocations") or [])
+                    if allocation.get("part_number") and allocation.get("batch_number")
+                },
+            }
+            job = await create_automation_job(
+                job_type="asn_creation", payload=payload, source_record_id=rec_id,
+                created_by=user, test_mode=is_test, priority=50,
+            )
+            await db.asn_creation.update_one(
+                {"_id": ObjectId(rec_id)},
+                {"$set": {"status": "Queued", "desktop_job_id": job["id"],
+                          "error_message": "", "updated_at": now_iso()}},
+            )
+            jobs.append(job)
+        return {"execution": "desktop", "queued": len(jobs), "jobs": jobs, "skipped": blocked}
+
     run_id = str(uuid.uuid4())
     run_state.update({"running": True, "run_id": run_id, "total": len(runnable), "processed": 0,
                       "current": None, "started_at": now_iso()})

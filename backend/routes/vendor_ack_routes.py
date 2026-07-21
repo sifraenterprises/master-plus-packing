@@ -17,6 +17,11 @@ from automation import (
     VendorAckAutomation, AutomationError, DropdownMatchError,
     AsnNotFoundError, AlreadyAcknowledgedError,
 )
+from routes.worker_routes import (
+    create_automation_job,
+    desktop_execution_enabled,
+    require_desktop_worker,
+)
 
 router = APIRouter(prefix="/vendor-ack", tags=["vendor-ack"])
 logger = logging.getLogger(__name__)
@@ -269,6 +274,27 @@ async def vendor_ack_run(req: AckRunRequest, background_tasks: BackgroundTasks, 
     else:
         result = await db.vendor_eway_acknowledgement.insert_one({**doc, **(await env_fields())})
         ack_id = str(result.inserted_id)
+    if desktop_execution_enabled():
+        mode = await get_mode()
+        is_test = mode != "live"
+        await require_desktop_worker(
+            "vendor_eway_acknowledgement", allow_offline_test=True, test_mode=is_test,
+        )
+        job = await create_automation_job(
+            job_type="vendor_eway_acknowledgement",
+            payload={"company_code": doc["company_code"], "transporter": doc["transporter"],
+                     "plant": doc["plant"], "asn_number": doc["asn_number"]},
+            source_record_id=ack_id, created_by=user["username"],
+            test_mode=is_test, priority=80,
+        )
+        await db.vendor_eway_acknowledgement.update_one(
+            {"_id": ObjectId(ack_id)},
+            {"$set": {"status": "Queued", "desktop_job_id": job["id"], "updated_at": now_iso()}},
+        )
+        await log_activity(user["username"], "vendor_ack_queued",
+                           f"{md.get('dispatch_no')} ASN {asn}", "vendor_ack")
+        return {"execution": "desktop", "ack_id": ack_id, "job": job, "status": "Queued"}
+
     run_id = str(uuid.uuid4())
     run_state.update({"running": True, "run_id": run_id, "ack_id": ack_id,
                       "dispatch_no": md.get("dispatch_no"), "started_at": now_iso()})

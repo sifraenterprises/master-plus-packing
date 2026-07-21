@@ -27,6 +27,7 @@ from routes.system_routes import router as system_router
 from routes.environment_routes import router as environment_router
 from routes.pdi_routes import router as pdi_router
 from routes.documents_routes import router as documents_router, seed_document_types
+from routes.worker_routes import router as worker_router
 
 REQUIRED_ENV = ["MONGO_URL", "DB_NAME", "JWT_SECRET", "ADMIN_USERNAME", "ADMIN_PASSWORD",
                 "DISPATCH_USERNAME", "DISPATCH_PASSWORD"]
@@ -104,6 +105,8 @@ api_router.include_router(environment_router)
 api_router.include_router(pdi_router)
 api_router.include_router(documents_router)
 api_router.include_router(public_router)
+api_router.include_router(worker_router)
+
 app.include_router(api_router)
 
 app.add_middleware(
@@ -132,6 +135,11 @@ async def seed_user(username_env: str, password_env: str, name: str, role: str):
 
 @app.on_event("startup")
 async def startup():
+    await db.automation_jobs.create_index([("status", 1), ("created_at", 1)])
+    await db.automation_jobs.create_index("job_type")
+    await db.automation_jobs.create_index("worker_name")
+    await db.automation_workers.create_index("worker_name", unique=True)
+    await db.automation_workers.create_index([("last_heartbeat", -1)])
     await db.users.create_index("username", unique=True)
     await db.login_attempts.create_index("identifier")
     await db.dispatch_entries.create_index("dispatch_id")
