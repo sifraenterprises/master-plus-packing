@@ -93,6 +93,17 @@ class ApiClient:
         self.request("POST", f"/worker/jobs/{job_id}/fail", params={"worker_name": WORKER_NAME},
                      json={"error": error[:4000], "retryable": retryable, "result": result or {}})
 
+    def download_document(self, job_id: str, destination: Path) -> None:
+        with self.session.get(
+            f"{API_BASE}/worker/jobs/{job_id}/document",
+            params={"worker_name": WORKER_NAME}, timeout=90, stream=True,
+        ) as response:
+            response.raise_for_status()
+            with destination.open("wb") as output:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        output.write(chunk)
+
 
 api = ApiClient()
 current_job_id: str | None = None
@@ -172,6 +183,10 @@ async def execute_job(job: dict) -> dict:
     if job_type == "asn_creation":
         bot = ASNAutomation(mode=mode, headless=HEADLESS, log=remote_log)
         allocations = payload.pop("batch_allocations", {})
+        temporary_dir = Path(tempfile.mkdtemp(prefix="grewal-asn-"))
+        pdi_path = temporary_dir / "pdi.pdf"
+        api.download_document(jid, pdi_path)
+        payload["pdi_path"] = str(pdi_path)
 
         async def allocation_cb(part, qty, batches):
             configured = allocations.get(part)
@@ -187,6 +202,7 @@ async def execute_job(job: dict) -> dict:
             return result
         finally:
             await bot.close()
+            shutil.rmtree(temporary_dir, ignore_errors=True)
 
     raise RuntimeError(f"Unsupported job type: {job_type}")
 

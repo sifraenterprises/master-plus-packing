@@ -1,11 +1,13 @@
 import hmac
 import os
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Literal
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from pymongo import ReturnDocument
 
@@ -92,6 +94,95 @@ def require_worker_token(x_worker_token: str = Header(default="", alias="X-Worke
     if not x_worker_token or not hmac.compare_digest(x_worker_token, expected):
         raise HTTPException(status_code=401, detail="Invalid desktop worker token")
     return x_worker_token
+
+
+async def sync_source_record(job: dict, *, success: bool, result: dict | None = None,
+                             error: str = "") -> None:
+    """Keep the business record in step with its desktop automation job."""
+    source_id = str(job.get("source_record_id") or "")
+    job_id = str(job.get("_id"))
+    timestamp = now_iso()
+    output = result or {}
+    job_type = job.get("job_type")
+
+    if job_type == "portal_validation":
+        checks = output.get("checks") or []
+        passed = sum(item.get("status") == "ok" for item in checks)
+        await db.settings.update_one(
+            {"key": "last_portal_validation"},
+            {"$set": {"value": {
+                "timestamp": timestamp, "attempt_login": True,
+                "passed": passed, "total": len(checks),
+                "all_ok": bool(success and checks and passed == len(checks)),
+                "failed_steps": [item.get("step", "Unknown") for item in checks
+                                 if item.get("status") != "ok"],
+                "error": error if not success else "",
+            }}}, upsert=True,
+        )
+        return
+
+    if not ObjectId.is_valid(source_id):
+        return
+    source_oid = ObjectId(source_id)
+    owned = {"desktop_job_id": job_id}
+
+    if job_type == "asn_creation":
+        fields = {"status": "Completed" if success else "Failed",
+                  "error_message": "" if success else error, "updated_at": timestamp}
+        if success:
+            fields.update({"asn_number": output.get("asn_number", ""), "completed_at": timestamp})
+        updated = await db.asn_creation.find_one_and_update(
+            {"_id": source_oid, **owned}, {"$set": fields}, return_document=ReturnDocument.AFTER,
+        )
+        if success and updated and output.get("asn_number") and ObjectId.is_valid(
+                updated.get("master_dispatch_id", "")):
+            master_oid = ObjectId(updated["master_dispatch_id"])
+            await db.master_dispatch.update_one(
+                {"_id": master_oid}, {"$set": {
+                    "asn_number": output["asn_number"], "status": "ready_for_eway",
+                    "updated_at": timestamp,
+                }},
+            )
+            await db.master_dispatch.update_one(
+                {"_id": master_oid, "documents.type": "PDI"}, {"$set": {
+                    "documents.$.upload_status": "Uploaded to Portal",
+                    "documents.$.last_upload_at": timestamp,
+                    "pdi_upload_status": "Uploaded to Portal", "pdi_last_upload_at": timestamp,
+                }},
+            )
+        return
+
+    if job_type == "eway_bill_entry":
+        fields = {
+            "status": "Completed" if success else "Failed", "updated_at": timestamp,
+            "error": None if success else error,
+        }
+        if success:
+            fields.update({"completed_time": timestamp, "retry_count": 0,
+                           "submitted_by": job.get("created_by", "desktop-worker")})
+        else:
+            fields["retry_count"] = int(job.get("attempts") or 1)
+        updated = await db.eway_submissions.update_one(
+            {"record_id": source_id, **owned}, {"$set": fields},
+        )
+        if success and updated.matched_count:
+            await db.master_dispatch.update_one(
+                {"_id": source_oid}, {"$set": {"status": "completed", "updated_at": timestamp}},
+            )
+        return
+
+    if job_type == "vendor_eway_acknowledgement":
+        fields = {
+            "status": "Completed" if success else "Failed", "updated_at": timestamp,
+            "portal_message": output.get("message", "Completed") if success else error,
+        }
+        if success:
+            ist = datetime.now(timezone(timedelta(hours=5, minutes=30)))
+            fields.update({"ack_date": ist.strftime("%Y-%m-%d"),
+                           "ack_time": ist.strftime("%H:%M:%S")})
+        await db.vendor_eway_acknowledgement.update_one(
+            {"_id": source_oid, **owned}, {"$set": fields},
+        )
 
 
 class WorkerRegistration(BaseModel):
@@ -254,13 +345,15 @@ async def complete_job(job_id: str, payload: JobCompleteInput, worker_name: str,
     if not ObjectId.is_valid(job_id):
         raise HTTPException(status_code=400, detail="Invalid job id")
     timestamp = now_iso()
-    result = await db.automation_jobs.update_one(
+    job = await db.automation_jobs.find_one_and_update(
         {"_id": ObjectId(job_id), "worker_name": worker_name, "status": {"$in": ["claimed", "running"]}},
         {"$set": {"status": "success", "progress": 100, "message": payload.message,
                   "result": payload.result, "completed_at": timestamp, "updated_at": timestamp}},
+        return_document=ReturnDocument.AFTER,
     )
-    if result.matched_count == 0:
+    if not job:
         raise HTTPException(status_code=409, detail="Job is not active for this worker")
+    await sync_source_record(job, success=True, result=payload.result)
     return {"ok": True}
 
 
@@ -270,14 +363,41 @@ async def fail_job(job_id: str, payload: JobFailInput, worker_name: str,
     if not ObjectId.is_valid(job_id):
         raise HTTPException(status_code=400, detail="Invalid job id")
     timestamp = now_iso()
-    result = await db.automation_jobs.update_one(
+    job = await db.automation_jobs.find_one_and_update(
         {"_id": ObjectId(job_id), "worker_name": worker_name, "status": {"$in": ["claimed", "running"]}},
         {"$set": {"status": "failed", "error": payload.error, "retryable": payload.retryable,
                   "result": payload.result, "completed_at": timestamp, "updated_at": timestamp}},
+        return_document=ReturnDocument.AFTER,
     )
-    if result.matched_count == 0:
+    if not job:
         raise HTTPException(status_code=409, detail="Job is not active for this worker")
+    await sync_source_record(job, success=False, result=payload.result, error=payload.error)
     return {"ok": True}
+
+
+@router.get("/jobs/{job_id}/document")
+async def download_job_document(job_id: str, worker_name: str,
+                                _: str = Depends(require_worker_token)):
+    """Stream the source PDI to a claimed desktop worker without exposing its path."""
+    if not ObjectId.is_valid(job_id):
+        raise HTTPException(status_code=400, detail="Invalid job id")
+    job = await db.automation_jobs.find_one(
+        {"_id": ObjectId(job_id), "worker_name": worker_name,
+         "status": {"$in": ["claimed", "running"]}, "job_type": "asn_creation"}
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Active ASN job not found")
+    source_id = str(job.get("source_record_id") or "")
+    if not ObjectId.is_valid(source_id):
+        raise HTTPException(status_code=404, detail="ASN source record not found")
+    record = await db.asn_creation.find_one({"_id": ObjectId(source_id), "desktop_job_id": job_id})
+    path_value = (record or {}).get("pdi_file_path")
+    if not path_value:
+        raise HTTPException(status_code=404, detail="PDI document is not available")
+    path = Path(path_value).resolve()
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="PDI document is not available")
+    return FileResponse(path, filename=path.name, media_type="application/pdf")
 
 
 @router.post("/jobs", dependencies=[Depends(require_admin)])

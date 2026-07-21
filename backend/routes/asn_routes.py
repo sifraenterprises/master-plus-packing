@@ -438,7 +438,16 @@ async def _start(background_tasks: BackgroundTasks, ids: list[str], user: str):
                 "igst": doc.get("igst", 0), "no_of_cases": doc.get("no_of_cases", 0),
                 "transporter": doc.get("transporter", ""), "items": doc.get("items", []),
                 "pdi_path": doc.get("pdi_file_path", ""),
-                "document_key": "pdi", "batch_allocations": {},
+                "document_key": "pdi",
+                "batch_allocations": {
+                    allocation.get("part_number"): [{
+                        "batch_no": allocation.get("batch_number"),
+                        "allocate_qty": allocation.get("allocated_quantity", 0),
+                        "consider": allocation.get("batch_considerable") == "Yes",
+                    }]
+                    for allocation in (doc.get("batch_allocations") or [])
+                    if allocation.get("part_number") and allocation.get("batch_number")
+                },
             }
             job = await create_automation_job(
                 job_type="asn_creation", payload=payload, source_record_id=rec_id,
