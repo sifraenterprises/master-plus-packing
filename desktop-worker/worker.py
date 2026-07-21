@@ -70,6 +70,11 @@ class ApiClient:
             "state": state, "message": message[:500],
         })
 
+    def offline(self, message: str = "Worker stopped") -> None:
+        self.request("POST", "/worker/offline", json={
+            "worker_name": WORKER_NAME, "message": message[:500],
+        })
+
     def claim(self) -> dict | None:
         return self.request("POST", "/worker/jobs/claim", params={"worker_name": WORKER_NAME}).get("job")
 
@@ -223,6 +228,10 @@ def main() -> int:
         return 0
     finally:
         stop_event.set()
+        try:
+            api.offline()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

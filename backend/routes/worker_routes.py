@@ -108,6 +108,11 @@ class HeartbeatInput(BaseModel):
     message: str = Field(default="", max_length=500)
 
 
+class WorkerOfflineInput(BaseModel):
+    worker_name: str = Field(min_length=1, max_length=80)
+    message: str = Field(default="Worker stopped", max_length=500)
+
+
 class JobCreateInput(BaseModel):
     job_type: str
     payload: dict[str, Any] = {}
@@ -136,12 +141,26 @@ class JobFailInput(BaseModel):
 @router.post("/register")
 async def register_worker(payload: WorkerRegistration, _: str = Depends(require_worker_token)):
     timestamp = now_iso()
+    capabilities = sorted(set(payload.capabilities) & JOB_TYPES)
+    if not capabilities:
+        raise HTTPException(status_code=400, detail="Worker has no supported capabilities")
+    existing = await db.automation_workers.find_one({"worker_name": payload.worker_name})
+    if existing and existing.get("hostname") not in ("", payload.hostname):
+        try:
+            from datetime import datetime
+            still_online = (datetime.fromisoformat(existing.get("last_heartbeat", ""))
+                            >= utcnow() - timedelta(seconds=90))
+        except Exception:
+            still_online = False
+        if still_online:
+            raise HTTPException(status_code=409, detail="Worker name is already active on another desktop")
     await db.automation_workers.update_one(
         {"worker_name": payload.worker_name},
         {"$set": {
-            **payload.model_dump(), "status": "online", "state": "idle",
+            **payload.model_dump(), "capabilities": capabilities,
+            "status": "online", "state": "idle",
             "last_heartbeat": timestamp, "updated_at": timestamp,
-        }, "$setOnInsert": {"created_at": timestamp}},
+        }, "$setOnInsert": {"created_at": timestamp, "active": True}},
         upsert=True,
     )
     return {"ok": True, "worker": payload.worker_name, "server_time": timestamp}
@@ -163,11 +182,30 @@ async def heartbeat(payload: HeartbeatInput, _: str = Depends(require_worker_tok
     return {"ok": True, "server_time": timestamp}
 
 
+@router.post("/offline")
+async def worker_offline(payload: WorkerOfflineInput, _: str = Depends(require_worker_token)):
+    timestamp = now_iso()
+    result = await db.automation_workers.update_one(
+        {"worker_name": payload.worker_name},
+        {"$set": {"status": "offline", "state": "idle", "message": payload.message,
+                  "current_job_id": None, "updated_at": timestamp}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Worker is not registered")
+    return {"ok": True, "server_time": timestamp}
+
+
 @router.post("/jobs/claim")
 async def claim_job(worker_name: str, _: str = Depends(require_worker_token)):
     timestamp = now_iso()
+    worker = await db.automation_workers.find_one({"worker_name": worker_name, "active": {"$ne": False}})
+    if not worker:
+        raise HTTPException(status_code=403, detail="Worker is not registered or is disabled")
+    capabilities = list(set(worker.get("capabilities") or []) & JOB_TYPES)
+    if not capabilities:
+        raise HTTPException(status_code=403, detail="Worker has no supported capabilities")
     job = await db.automation_jobs.find_one_and_update(
-        {"status": "pending"},
+        {"status": "pending", "job_type": {"$in": capabilities}},
         {"$set": {
             "status": "claimed", "worker_name": worker_name,
             "claimed_at": timestamp, "updated_at": timestamp,
@@ -272,6 +310,20 @@ async def worker_status(user: dict = Depends(get_current_user)):
         item["online"] = is_online
         output.append(item)
     return {"workers": output}
+
+
+@router.put("/workers/{worker_name}/active", dependencies=[Depends(require_admin)])
+async def set_worker_active(worker_name: str, payload: dict, user: dict = Depends(get_current_user)):
+    if "active" not in payload:
+        raise HTTPException(status_code=400, detail="active is required")
+    timestamp = now_iso()
+    result = await db.automation_workers.update_one(
+        {"worker_name": worker_name},
+        {"$set": {"active": bool(payload["active"]), "updated_at": timestamp}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    return {"ok": True, "worker_name": worker_name, "active": bool(payload["active"])}
 
 
 @router.get("/jobs")
