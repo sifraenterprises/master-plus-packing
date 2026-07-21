@@ -18,6 +18,7 @@ import api, { apiError } from "@/lib/api";
 import { MastersPanel } from "@/components/settings/MastersPanel";
 import { SystemStatusPanel } from "@/components/settings/SystemStatusPanel";
 import SystemEnvironmentPanel from "@/components/settings/SystemEnvironmentPanel";
+import DesktopWorkersPanel from "@/components/settings/DesktopWorkersPanel";
 
 const EMPTY_USER = { username: "", name: "", password: "", role: "dispatch" };
 
@@ -91,11 +92,16 @@ export default function Settings() {
           <TabsTrigger value="logs" className="rounded-sm" data-testid="tab-audit-logs">Audit Logs</TabsTrigger>
           <TabsTrigger value="masters" className="rounded-sm" data-testid="tab-masters">Masters</TabsTrigger>
           <TabsTrigger value="environment" className="rounded-sm" data-testid="tab-environment">System Environment</TabsTrigger>
+          <TabsTrigger value="workers" className="rounded-sm" data-testid="tab-desktop-workers">Desktop Workers</TabsTrigger>
           <TabsTrigger value="system" className="rounded-sm" data-testid="tab-system">System Status</TabsTrigger>
         </TabsList>
 
         <TabsContent value="environment" className="mt-6">
           <SystemEnvironmentPanel />
+        </TabsContent>
+
+        <TabsContent value="workers" className="mt-6">
+          <DesktopWorkersPanel />
         </TabsContent>
 
         <TabsContent value="masters" className="mt-6">
