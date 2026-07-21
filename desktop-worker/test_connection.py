@@ -34,7 +34,9 @@ async def main():
         r = requests.post(api + "/worker/register", timeout=20,
                           headers={"X-Worker-Token": token},
                           json={"worker_name": os.environ.get("WORKER_NAME", socket.gethostname()),
-                                "hostname": socket.gethostname(), "version": "1.0.0", "capabilities": ["test"]})
+                                "hostname": socket.gethostname(), "version": "1.0.0",
+                                "capabilities": ["portal_validation", "asn_creation",
+                                                 "eway_bill_entry", "vendor_eway_acknowledgement"]})
         all_ok &= show("Worker token", r.ok, f"HTTP {r.status_code}")
     except Exception as exc:
         all_ok &= show("Worker token", False, str(exc))
