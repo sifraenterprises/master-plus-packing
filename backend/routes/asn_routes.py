@@ -50,6 +50,7 @@ alloc_state = {"event": None, "record_id": None, "batches": [], "asn_qty": 0, "r
 
 class RunRequest(BaseModel):
     ids: list[str] = []
+    dry_run: bool = False
 
 
 class AsnEditInput(BaseModel):
@@ -418,7 +419,7 @@ async def _resolve_documents(ids: list[str]):
     return runnable, blocked
 
 
-async def _start(background_tasks: BackgroundTasks, ids: list[str], user: str):
+async def _start(background_tasks: BackgroundTasks, ids: list[str], user: str, dry_run: bool = False):
     await get_mode()  # blocks in maintenance / emergency stop before scheduling
     if run_state["running"]:
         raise HTTPException(status_code=409, detail="An ASN automation run is already in progress")
@@ -458,6 +459,7 @@ async def _start(background_tasks: BackgroundTasks, ids: list[str], user: str):
                     for allocation in (doc.get("batch_allocations") or [])
                     if allocation.get("part_number") and allocation.get("batch_number")
                 },
+                "dry_run": dry_run,
             }
             job = await create_automation_job(
                 job_type="asn_creation", payload=payload, source_record_id=rec_id,
@@ -481,7 +483,7 @@ async def _start(background_tasks: BackgroundTasks, ids: list[str], user: str):
 @router.post("/run")
 async def asn_run(req: RunRequest, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     ids = [i for i in req.ids if ObjectId.is_valid(i)]
-    result = await _start(background_tasks, ids, user["username"])
+    result = await _start(background_tasks, ids, user["username"], req.dry_run)
     await log_activity(user["username"], "asn_run", f"{len(ids)} record(s)", "asn")
     return result
 

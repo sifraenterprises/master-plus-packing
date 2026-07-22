@@ -1,0 +1,87 @@
+{
+  "login": {
+    "username": "#txtUserName",
+    "password": "#txtPassword",
+    "submit": "#btnLogin",
+    "error_indicator": ".login-error, #lblError",
+    "logged_in_indicator": "#divMainMenu, .main-menu, #logout"
+  },
+  "eway": {
+    "menu_eway_bill": "text=E-Way Bill",
+    "menu_eway_entry": "text=E-Way Bill Entry",
+    "company_code": "[id*='CompanyCode' i], [name*='CompanyCode' i]",
+    "eway_bill_no": "input[id*='EwayBill' i], input[id*='EWayBillNo' i], input[name*='EwayBill' i]",
+    "from_validity": "input[id*='FromValidity' i], input[id*='FromDate' i], input[name*='FromValidity' i]",
+    "to_validity": "input[id*='ToValidity' i], input[id*='ToDate' i], input[name*='ToValidity' i]",
+    "submit": "input[type='submit'][value='Submit'], button:has-text('Submit'), [id*='btnSubmit' i]",
+    "success_indicator": ".success-message, [id*='lblSuccess' i], [id*='lblMsg' i]",
+    "error_indicator": ".error-message, [id*='lblError' i]"
+  },
+  "packing_slip": {
+    "menu_path": [
+      "text=Packing Slip",
+      "text=Packing Slip Entry"
+    ],
+    "fields": {
+      "invoice_no": "#txtInvoiceNo"
+    },
+    "submit": "#btnSubmit",
+    "success_indicator": ".success-message, #lblSuccess",
+    "error_indicator": ".error-message, #lblErrorMsg"
+  },
+  "asn": {
+    "menu_create_asn": "text=Create ASN",
+    "po_dropdown": "select[id*='PONumber' i], select[id*='PONo' i], select[name*='PONumber' i]",
+    "po_search": "input[type='submit'][value='Search'], button:has-text('Search'), [id*='btnSearch' i]",
+    "part_search_input": "input[id*='SearchPart' i], input[id*='PartNumber' i][type='text']",
+    "part_search_go": "input[type='submit'][value='Go'], button:has-text('Go'), [id*='btnGo' i]",
+    "parts_table": "table:has-text('Part Number')",
+    "part_add_link": "tr:has-text('{part}') a:has-text('Click here to Add to Invoice')",
+    "invoice_row_qty": "tr:has-text('{part}') input[id*='Qty' i], tr:has-text('{part}') input[type='text']",
+    "batch_container": "tr:has-text('{part}') table:has-text('Batch')",
+    "batch_rows": "tr:has(td)",
+    "batch_qty_input": "input[type='text'], input[type='number']",
+    "batch_radio": "input[type='radio']",
+    "invoice_no": "input[id*='InvoiceNo' i], input[name*='InvoiceNo' i]",
+    "invoice_date": "input[id*='InvoiceDate' i], input[name*='InvoiceDate' i]",
+    "basic_amount": "input[id*='BasicAmount' i], input[name*='BasicAmount' i]",
+    "total_amount": "input[id*='TotalAmount' i], input[name*='TotalAmount' i]",
+    "cgst": "input[id*='CGST' i]",
+    "sgst": "input[id*='SGST' i]",
+    "igst": "input[id*='IGST' i]",
+    "no_of_cases": "input[id*='Cases' i]",
+    "transporter": "select[id*='Transporter' i], select[name*='Transporter' i]",
+    "pdi_file_input": "input[type='file']",
+    "attach_button": "input[type='submit'][value='Attach'], button:has-text('Attach'), [id*='btnAttach' i]",
+    "attach_success": "[id*='lblAttach' i], :text('uploaded successfully'), :text('Attached Successfully')",
+    "create_asn_button": "input[type='submit'][value='Create ASN'], button:has-text('Create ASN'), [id*='btnCreateASN' i]",
+    "asn_number_indicator": "[id*='lblASN' i], [id*='ASNNo' i], .success-message",
+    "error_indicator": ".error-message, [id*='lblError' i]"
+  },
+  "vendor_ack": {
+    "menu_vendor_ack": "text=E Way Bill Acknowledgement",
+    "company_code": "select[id*='CompanyCode' i], select[name*='CompanyCode' i]",
+    "transporter": "select[id*='Transporter' i], select[name*='Transporter' i]",
+    "plant": "select[id*='Plant' i], select[name*='Plant' i]",
+    "asn_no": "input[id*='ASN' i], input[name*='ASN' i]",
+    "search": "input[type='submit'][value='Search'], button:has-text('Search'), [id*='btnSearch' i]",
+    "grid": "[id*='grdASN' i], [id*='GridView' i] tr, table[id*='ASN' i]",
+    "grid_checkbox": "[id*='grdASN' i] input[type='checkbox'], [id*='GridView' i] input[type='checkbox']",
+    "submit": "input[type='submit'][value='Submit'], button:has-text('Submit'), [id*='btnSubmit' i]",
+    "success_indicator": ".success-message, [id*='lblSuccess' i], [id*='lblMsg' i]",
+    "error_indicator": ".error-message, [id*='lblError' i]",
+    "no_details_indicator": "[id*='lblNoRecord' i], :text('No Records Found'), :text('No details found')",
+    "already_ack_indicator": "text=Already Acknowledged"
+  },
+  "dqms": {
+    "menu_path": [
+      "text=DQMS"
+    ],
+    "fields": {
+      "invoice_no": "#txtInvoiceNo"
+    },
+    "submit": "#btnSubmit",
+    "success_indicator": ".success-message, #lblSuccess",
+    "error_indicator": ".error-message, #lblErrorMsg"
+  }
+}

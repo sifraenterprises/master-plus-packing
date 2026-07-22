@@ -121,8 +121,7 @@ export default function AsnModule() {
   };
 
   const runOne = async (r) => {
-    if (stopBeforeSubmit) return toast.info("Stopped before submit");
-    const d = await call("post", "/asn/run", { ids: [r.id] }, `Creating ASN for ${r.invoice_no}…`);
+    const d = await call("post", "/asn/run", { ids: [r.id], dry_run: stopBeforeSubmit }, stopBeforeSubmit ? `Dry-run filling TAFE form for ${r.invoice_no}…` : `Creating ASN for ${r.invoice_no}…`);
     if (d) { load(); startPoll(); }
   };
 

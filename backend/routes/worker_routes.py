@@ -127,7 +127,7 @@ async def sync_source_record(job: dict, *, success: bool, result: dict | None = 
     owned = {"desktop_job_id": job_id}
 
     if job_type == "asn_creation":
-        fields = {"status": "Completed" if success else "Failed",
+        fields = {"status": "Dry Run Ready" if success and output.get("dry_run") else ("Completed" if success else "Failed"),
                   "error_message": "" if success else error, "updated_at": timestamp}
         if success:
             fields.update({"asn_number": output.get("asn_number", ""), "completed_at": timestamp})
