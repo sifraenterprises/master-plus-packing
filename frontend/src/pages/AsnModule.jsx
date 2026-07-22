@@ -202,7 +202,10 @@ export default function AsnModule() {
         <Button variant="secondary" onClick={() => load()} data-testid="asn-refresh" className="rounded-sm gap-1">
           <ArrowsClockwise size={14} /> Refresh
         </Button>
-        <Button variant="secondary" onClick={() => setStopBeforeSubmit(true)} disabled={stopBeforeSubmit} data-testid="asn-stop-before-submit" className="rounded-sm gap-1 text-red-400">Stop before submit</Button>
+        <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-sm border border-red-500/40 bg-red-500/5 px-3 text-sm text-red-300" title="Pause the worker before the final TAFE submission">
+          <input type="checkbox" checked={stopBeforeSubmit} onChange={(e) => setStopBeforeSubmit(e.target.checked)} data-testid="asn-stop-before-submit" className="h-4 w-4 accent-red-500" />
+          Stop before submit
+        </label>
         <Button variant="secondary" onClick={() => setAllocHistory(true)} data-testid="asn-batch-allocations" className="rounded-sm gap-1">
           <ListMagnifyingGlass size={14} /> Batch Allocations
         </Button>

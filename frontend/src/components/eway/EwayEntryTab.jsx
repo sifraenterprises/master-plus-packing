@@ -251,7 +251,10 @@ export default function EwayEntryTab() {
         <Button size="sm" variant="secondary" onClick={() => fetchData()} data-testid="eway-refresh" className="rounded-sm gap-1 h-9">
           <ArrowsClockwise size={14} /> Refresh
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => setStopBeforeSubmit(true)} disabled={stopBeforeSubmit} data-testid="eway-stop-before-submit" className="rounded-sm gap-1 h-9 text-red-400">Stop before submit</Button>
+        <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-sm border border-red-500/40 bg-red-500/5 px-3 text-sm text-red-300" title="Pause the worker before the final TAFE submission">
+          <input type="checkbox" checked={stopBeforeSubmit} onChange={(e) => setStopBeforeSubmit(e.target.checked)} data-testid="eway-stop-before-submit" className="h-4 w-4 accent-red-500" />
+          Stop before submit
+        </label>
         <Button size="sm" variant="secondary" onClick={exportExcel} data-testid="eway-export-excel" className="rounded-sm gap-1 h-9">
           <FileXls size={14} /> Excel
         </Button>
