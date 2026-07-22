@@ -295,7 +295,7 @@ export default function VendorAckModule() {
                           <ArrowsCounterClockwise size={16} />
                         </button>
                       )}
-                      {r.ack && r.ack_status !== "Processing" && <button onClick={() => deleteRecord(r)} title="Delete acknowledgement" className="inline-flex items-center gap-1 rounded-sm px-1.5 py-1 text-xs text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-colors" data-testid={`vack-delete-${r.dispatch_no}`} aria-label="Delete acknowledgement"><Trash size={16} /> <span>Delete</span></button>}
+                      <button onClick={() => r.ack ? deleteRecord(r) : toast.info("This dispatch has no acknowledgement record to delete yet")} disabled={!r.ack || r.ack_status === "Processing"} title={!r.ack ? "No acknowledgement record" : r.ack_status === "Processing" ? "Processing records cannot be deleted" : "Delete acknowledgement"} className="inline-flex items-center gap-1 rounded-sm px-1.5 py-1 text-xs text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:cursor-not-allowed disabled:opacity-35" data-testid={`vack-delete-${r.dispatch_no}`} aria-label="Delete acknowledgement"><Trash size={16} /> <span>Delete</span></button>
                     </div>
                   </TableCell>
                 </TableRow>
