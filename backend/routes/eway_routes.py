@@ -24,6 +24,15 @@ from routes.worker_routes import (
 )
 
 router = APIRouter(prefix="/eway", tags=["eway"])
+
+@router.delete("/records/{record_id}")
+async def delete_record(record_id: str, user: dict = Depends(require_admin)):
+    if not ObjectId.is_valid(record_id):
+        raise HTTPException(status_code=400, detail="Invalid E-Way record id")
+    result = await db.eway_submissions.delete_one({"_id": ObjectId(record_id), "status": {"$nin": ["Processing"]}})
+    if not result.deleted_count:
+        raise HTTPException(status_code=409, detail="Processing or missing E-Way records cannot be deleted")
+    return {"deleted": True}
 logger = logging.getLogger(__name__)
 
 ROOT_DIR = Path(__file__).parent.parent

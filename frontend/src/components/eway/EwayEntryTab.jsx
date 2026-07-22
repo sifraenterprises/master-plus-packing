@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Play, PlayCircle, ArrowsClockwise, ArrowsCounterClockwise, FileXls,
-  Warning, PencilSimple, MagnifyingGlass,
+  Warning, PencilSimple, MagnifyingGlass, Trash,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +40,7 @@ export default function EwayEntryTab() {
   const [logs, setLogs] = useState([]);
   const [selected, setSelected] = useState([]);
   const [running, setRunning] = useState(false);
+  const [stopBeforeSubmit, setStopBeforeSubmit] = useState(false);
   const [runInfo, setRunInfo] = useState(null);
   const [settings, setSettings] = useState({ mode: "test" });
   const [confirmLive, setConfirmLive] = useState(false);
@@ -97,6 +98,7 @@ export default function EwayEntryTab() {
   }, [running, fetchData]);
 
   const startRun = async (endpoint, body) => {
+    if (stopBeforeSubmit) return toast.info("Stopped before submit");
     try {
       const res = await api.post(endpoint, body || {});
       setRunning(true);
@@ -135,6 +137,11 @@ export default function EwayEntryTab() {
     } finally {
       setSaving(false);
     }
+  };
+  const deleteRecord = async (r) => {
+    if (!window.confirm(`Delete E-Way record ${r.dispatch_no}? This cannot be undone.`)) return;
+    try { await api.delete(`/eway/records/${r.id}`); toast.success("E-Way record deleted"); fetchData(); }
+    catch (err) { toast.error(apiError(err)); }
   };
 
   const saveValidity = async (r, field, isoVal) => {
@@ -244,6 +251,7 @@ export default function EwayEntryTab() {
         <Button size="sm" variant="secondary" onClick={() => fetchData()} data-testid="eway-refresh" className="rounded-sm gap-1 h-9">
           <ArrowsClockwise size={14} /> Refresh
         </Button>
+        <Button size="sm" variant="secondary" onClick={() => setStopBeforeSubmit(true)} disabled={stopBeforeSubmit} data-testid="eway-stop-before-submit" className="rounded-sm gap-1 h-9 text-red-400">Stop before submit</Button>
         <Button size="sm" variant="secondary" onClick={exportExcel} data-testid="eway-export-excel" className="rounded-sm gap-1 h-9">
           <FileXls size={14} /> Excel
         </Button>
@@ -322,6 +330,7 @@ export default function EwayEntryTab() {
                                 className="rounded-sm h-6 text-[10px] px-2">
                           Run
                         </Button>
+                        {r.eway_status !== "Processing" && <button onClick={() => deleteRecord(r)} className="p-1.5 text-muted-foreground hover:text-red-400 transition-colors" data-testid={`eway-delete-${r.dispatch_no}`} aria-label="Delete E-Way record"><Trash size={15} /></button>}
                       </div>
                     </TableCell>
                   </TableRow>

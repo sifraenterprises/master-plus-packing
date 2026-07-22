@@ -15,7 +15,7 @@ from pathlib import Path
 from database import db
 from environment import env_fields, env_list_filter
 from models import utcnow
-from auth import get_current_user, log_activity
+from auth import get_current_user, require_admin, log_activity
 from alerts import send_alert
 from automation import ASNAutomation, AutomationError, AsnValidationError, DropdownMatchError, BatchAllocationError, SCREENSHOT_DIR
 from routes.worker_routes import (
@@ -25,6 +25,16 @@ from routes.worker_routes import (
 )
 
 router = APIRouter(prefix="/asn", tags=["asn"])
+
+@router.delete("/records/{record_id}")
+async def delete_record(record_id: str, user: dict = Depends(require_admin)):
+    if not ObjectId.is_valid(record_id):
+        raise HTTPException(status_code=400, detail="Invalid ASN record id")
+    result = await db.asn_creation.delete_one({"_id": ObjectId(record_id), "status": {"$nin": ["Processing"]}})
+    if not result.deleted_count:
+        raise HTTPException(status_code=409, detail="Processing or missing ASN records cannot be deleted")
+    await db.asn_batch_allocations.delete_many({"asn_record_id": record_id})
+    return {"deleted": True}
 logger = logging.getLogger(__name__)
 
 ROOT_DIR = Path(__file__).parent.parent

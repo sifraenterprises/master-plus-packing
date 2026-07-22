@@ -11,7 +11,7 @@ from pathlib import Path
 from database import db
 from environment import env_fields, env_list_filter
 from models import utcnow
-from auth import get_current_user, log_activity
+from auth import get_current_user, require_admin, log_activity
 from alerts import send_alert
 from automation import (
     VendorAckAutomation, AutomationError, DropdownMatchError,
@@ -24,6 +24,15 @@ from routes.worker_routes import (
 )
 
 router = APIRouter(prefix="/vendor-ack", tags=["vendor-ack"])
+
+@router.delete("/records/{record_id}")
+async def delete_record(record_id: str, user: dict = Depends(require_admin)):
+    if not ObjectId.is_valid(record_id):
+        raise HTTPException(status_code=400, detail="Invalid acknowledgement record id")
+    result = await db.vendor_eway_acknowledgement.delete_one({"_id": ObjectId(record_id), "status": {"$nin": ["Processing"]}})
+    if not result.deleted_count:
+        raise HTTPException(status_code=409, detail="Processing or missing acknowledgement records cannot be deleted")
+    return {"deleted": True}
 logger = logging.getLogger(__name__)
 
 ROOT_DIR = Path(__file__).parent.parent

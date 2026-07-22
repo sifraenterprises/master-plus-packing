@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Truck, DownloadSimple, Play, ArrowsClockwise, ArrowsCounterClockwise, FileXls, PencilSimple, Paperclip, ListMagnifyingGlass, MagnifyingGlass } from "@phosphor-icons/react";
+import { Truck, DownloadSimple, Play, ArrowsClockwise, ArrowsCounterClockwise, FileXls, PencilSimple, Paperclip, ListMagnifyingGlass, MagnifyingGlass, Trash } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +34,7 @@ export default function AsnModule() {
   const [transporters, setTransporters] = useState([]);
   const [filters, setFilters] = useState({ status: "All", search: "" });
   const [running, setRunning] = useState(false);
+  const [stopBeforeSubmit, setStopBeforeSubmit] = useState(false);
   const [runInfo, setRunInfo] = useState(null);
   const [editRec, setEditRec] = useState(null);
   const [logView, setLogView] = useState(null);
@@ -120,6 +121,7 @@ export default function AsnModule() {
   };
 
   const runOne = async (r) => {
+    if (stopBeforeSubmit) return toast.info("Stopped before submit");
     const d = await call("post", "/asn/run", { ids: [r.id] }, `Creating ASN for ${r.invoice_no}…`);
     if (d) { load(); startPoll(); }
   };
@@ -132,6 +134,11 @@ export default function AsnModule() {
     }, "ASN record updated");
     setSaving(false);
     if (d) { setEditRec(null); load(); }
+  };
+  const deleteRecord = async (r) => {
+    if (!window.confirm(`Delete ASN record ${r.invoice_no}? This cannot be undone.`)) return;
+    try { await api.delete(`/asn/records/${r.id}`); toast.success("ASN record deleted"); load(); }
+    catch (err) { toast.error(apiError(err)); }
   };
 
   const uploadPdi = async (file) => {
@@ -195,6 +202,7 @@ export default function AsnModule() {
         <Button variant="secondary" onClick={() => load()} data-testid="asn-refresh" className="rounded-sm gap-1">
           <ArrowsClockwise size={14} /> Refresh
         </Button>
+        <Button variant="secondary" onClick={() => setStopBeforeSubmit(true)} disabled={stopBeforeSubmit} data-testid="asn-stop-before-submit" className="rounded-sm gap-1 text-red-400">Stop before submit</Button>
         <Button variant="secondary" onClick={() => setAllocHistory(true)} data-testid="asn-batch-allocations" className="rounded-sm gap-1">
           <ListMagnifyingGlass size={14} /> Batch Allocations
         </Button>
@@ -270,6 +278,7 @@ export default function AsnModule() {
                       <button onClick={() => setLogView(r)} className="p-1.5 text-muted-foreground hover:text-primary transition-colors" data-testid={`asn-log-${r.invoice_no}`} aria-label="View log">
                         <ListMagnifyingGlass size={16} />
                       </button>
+                      {r.status !== "Processing" && <button onClick={() => deleteRecord(r)} className="p-1.5 text-muted-foreground hover:text-red-400 transition-colors" data-testid={`asn-delete-${r.invoice_no}`} aria-label="Delete ASN record"><Trash size={16} /></button>}
                     </div>
                   </TableCell>
                 </TableRow>
