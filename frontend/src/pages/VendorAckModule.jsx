@@ -123,8 +123,9 @@ export default function VendorAckModule() {
     }
   };
   const deleteRecord = async (r) => {
-    if (!window.confirm(`Delete acknowledgement record ${r.dispatch_no}? This cannot be undone.`)) return;
-    try { await api.delete(`/vendor-ack/records/${r.ack?.id || r.dispatch_id}`); toast.success("Acknowledgement record deleted"); load(); }
+    const pending = !r.ack;
+    if (!window.confirm(`Delete ${pending ? "pending dispatch" : "acknowledgement record"} ${r.dispatch_no}? This cannot be undone.`)) return;
+    try { await api.delete(pending ? `/vendor-ack/dispatches/${r.dispatch_id}` : `/vendor-ack/records/${r.ack.id}`); toast.success("Record deleted"); load(); }
     catch (err) { toast.error(apiError(err)); }
   };
 
@@ -295,7 +296,7 @@ export default function VendorAckModule() {
                           <ArrowsCounterClockwise size={16} />
                         </button>
                       )}
-                      <button onClick={() => r.ack ? deleteRecord(r) : toast.info("This dispatch has no acknowledgement record to delete yet")} disabled={!r.ack || r.ack_status === "Processing"} title={!r.ack ? "No acknowledgement record" : r.ack_status === "Processing" ? "Processing records cannot be deleted" : "Delete acknowledgement"} className="inline-flex items-center gap-1 rounded-sm px-1.5 py-1 text-xs text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:cursor-not-allowed disabled:opacity-35" data-testid={`vack-delete-${r.dispatch_no}`} aria-label="Delete acknowledgement"><Trash size={16} /> <span>Delete</span></button>
+                      <button onClick={() => deleteRecord(r)} disabled={r.ack_status === "Processing"} title={r.ack_status === "Processing" ? "Processing records cannot be deleted" : "Delete record"} className="inline-flex items-center gap-1 rounded-sm px-1.5 py-1 text-xs text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:cursor-not-allowed disabled:opacity-35" data-testid={`vack-delete-${r.dispatch_no}`} aria-label="Delete record"><Trash size={16} /> <span>Delete</span></button>
                     </div>
                   </TableCell>
                 </TableRow>

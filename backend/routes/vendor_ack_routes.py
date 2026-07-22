@@ -32,7 +32,19 @@ async def delete_record(record_id: str, user: dict = Depends(require_admin)):
     result = await db.vendor_eway_acknowledgement.delete_one({"_id": ObjectId(record_id), "status": {"$nin": ["Processing"]}})
     if not result.deleted_count:
         raise HTTPException(status_code=409, detail="Processing or missing acknowledgement records cannot be deleted")
-    return {"deleted": True}
+    return {"deleted": True, "type": "acknowledgement"}
+
+@router.delete("/dispatches/{dispatch_id}")
+async def delete_pending_dispatch(dispatch_id: str, user: dict = Depends(require_admin)):
+    """Delete only an unprocessed dispatch that has no vendor acknowledgement."""
+    if not ObjectId.is_valid(dispatch_id):
+        raise HTTPException(status_code=400, detail="Invalid dispatch id")
+    if await db.vendor_eway_acknowledgement.find_one({"dispatch_id": dispatch_id}):
+        raise HTTPException(status_code=409, detail="Dispatch already has an acknowledgement; delete that record instead")
+    result = await db.master_dispatch.delete_one({"_id": ObjectId(dispatch_id)})
+    if not result.deleted_count:
+        raise HTTPException(status_code=404, detail="Dispatch not found")
+    return {"deleted": True, "type": "pending_dispatch"}
 logger = logging.getLogger(__name__)
 
 ROOT_DIR = Path(__file__).parent.parent
