@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Handshake, Play, ArrowsClockwise, MagnifyingGlass, Camera, ListMagnifyingGlass, ArrowsCounterClockwise } from "@phosphor-icons/react";
+import { Handshake, Play, ArrowsClockwise, MagnifyingGlass, Camera, ListMagnifyingGlass, ArrowsCounterClockwise, Trash } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,7 @@ export default function VendorAckModule() {
   const [selectedId, setSelectedId] = useState("");
   const [panel, setPanel] = useState(null);
   const [running, setRunning] = useState(false);
+  const [stopBeforeSubmit, setStopBeforeSubmit] = useState(false);
   const [logView, setLogView] = useState(null);
   const [shotView, setShotView] = useState(null);
   const [shotUrls, setShotUrls] = useState({});
@@ -91,6 +92,7 @@ export default function VendorAckModule() {
   };
 
   const startAutomation = async () => {
+    if (stopBeforeSubmit) return toast.info("Stopped before submit");
     if (!panel) return;
     setRunning(true);
     try {
@@ -119,6 +121,11 @@ export default function VendorAckModule() {
       toast.error(apiError(err));
       setRunning(false);
     }
+  };
+  const deleteRecord = async (r) => {
+    if (!window.confirm(`Delete acknowledgement record ${r.dispatch_no}? This cannot be undone.`)) return;
+    try { await api.delete(`/vendor-ack/records/${r.ack?.id || r.dispatch_id}`); toast.success("Acknowledgement record deleted"); load(); }
+    catch (err) { toast.error(apiError(err)); }
   };
 
   const viewShots = async (r) => {
@@ -223,6 +230,7 @@ export default function VendorAckModule() {
           <Button variant="secondary" onClick={() => load()} data-testid="vack-refresh" className="rounded-sm gap-1">
             <ArrowsClockwise size={14} /> Refresh
           </Button>
+          <Button variant="secondary" onClick={() => setStopBeforeSubmit(true)} disabled={stopBeforeSubmit} data-testid="vack-stop-before-submit" className="rounded-sm gap-1 text-red-400">Stop before submit</Button>
         </div>
       </div>
 
@@ -284,6 +292,7 @@ export default function VendorAckModule() {
                           <ArrowsCounterClockwise size={16} />
                         </button>
                       )}
+                      {r.ack && r.ack_status !== "Processing" && <button onClick={() => deleteRecord(r)} className="p-1.5 text-muted-foreground hover:text-red-400 transition-colors" data-testid={`vack-delete-${r.dispatch_no}`} aria-label="Delete acknowledgement"><Trash size={16} /></button>}
                     </div>
                   </TableCell>
                 </TableRow>
