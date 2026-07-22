@@ -295,7 +295,7 @@ export default function VendorAckModule() {
                           <ArrowsCounterClockwise size={16} />
                         </button>
                       )}
-                      {r.ack && r.ack_status !== "Processing" && <button onClick={() => deleteRecord(r)} className="p-1.5 text-muted-foreground hover:text-red-400 transition-colors" data-testid={`vack-delete-${r.dispatch_no}`} aria-label="Delete acknowledgement"><Trash size={16} /></button>}
+                      {r.ack && r.ack_status !== "Processing" && <button onClick={() => deleteRecord(r)} title="Delete acknowledgement" className="inline-flex items-center gap-1 rounded-sm px-1.5 py-1 text-xs text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-colors" data-testid={`vack-delete-${r.dispatch_no}`} aria-label="Delete acknowledgement"><Trash size={16} /> <span>Delete</span></button>}
                     </div>
                   </TableCell>
                 </TableRow>
