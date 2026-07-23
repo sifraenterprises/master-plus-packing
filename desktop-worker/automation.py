@@ -479,6 +479,17 @@ class ASNAutomation(PortalAutomationBase):
         try:
             await self.page.wait_for_selector(s["po_dropdown"], state="visible", timeout=30000)
         except Exception:
+            # The portal exposes both a left-nav item and a top tab with the
+            # same label. Try each visible control before scanning frames.
+            for control in await self.page.get_by_text("Create ASN", exact=True).all():
+                try:
+                    if await control.is_visible():
+                        await control.click()
+                        await self.page.wait_for_timeout(1000)
+                        if await self.page.locator(s["po_dropdown"]).count() > 0:
+                            break
+                except Exception:
+                    continue
             # TAFE renders Create ASN inside an iframe. Continue using the
             # frame containing the PO selector when it is not on the top page.
             for frame in self.page.frames:

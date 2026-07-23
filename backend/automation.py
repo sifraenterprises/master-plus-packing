@@ -477,6 +477,15 @@ class ASNAutomation(PortalAutomationBase):
         try:
             await self.page.wait_for_selector(s["po_dropdown"], state="visible", timeout=30000)
         except Exception:
+            for control in await self.page.get_by_text("Create ASN", exact=True).all():
+                try:
+                    if await control.is_visible():
+                        await control.click()
+                        await self.page.wait_for_timeout(1000)
+                        if await self.page.locator(s["po_dropdown"]).count() > 0:
+                            break
+                except Exception:
+                    continue
             for frame in self.page.frames:
                 if frame == self.page.main_frame:
                     continue
