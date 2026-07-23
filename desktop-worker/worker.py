@@ -42,7 +42,7 @@ TOKEN = os.environ.get("DESKTOP_WORKER_TOKEN", "")
 WORKER_NAME = os.environ.get("WORKER_NAME", socket.gethostname())
 HEADLESS = os.environ.get("HEADLESS", "false").lower() == "true"
 TEST_MODE = os.environ.get("TEST_MODE", "true").lower() == "true"
-POLL_SECONDS = max(3, int(os.environ.get("POLL_INTERVAL_SECONDS", "10")))
+POLL_SECONDS = max(3, int(os.environ.get("POLL_INTERVAL_SECONDS", "3")))
 HEARTBEAT_SECONDS = max(10, int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "30")))
 
 
