@@ -118,11 +118,15 @@ def find_local_pdi(invoice_no: str) -> Path | None:
     folder = Path(PDI_FOLDER).expanduser()
     if not folder.is_dir():
         raise RuntimeError(f"PDI_FOLDER does not exist: {folder}")
-    key = "".join(ch.lower() for ch in str(invoice_no) if ch.isalnum())
+    raw_invoice = str(invoice_no)
+    key = "".join(ch.lower() for ch in raw_invoice if ch.isalnum())
+    # Many offices name the PDF only with the invoice suffix (for example 1167).
+    suffix = raw_invoice.rsplit("/", 1)[-1].strip()
+    suffix_key = "".join(ch.lower() for ch in suffix if ch.isalnum())
     candidates = sorted(folder.rglob("*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)
     for candidate in candidates:
         name_key = "".join(ch.lower() for ch in candidate.stem if ch.isalnum())
-        if key and key in name_key:
+        if key and (key in name_key or (suffix_key and suffix_key in name_key)):
             return candidate
     return None
 
