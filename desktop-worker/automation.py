@@ -543,10 +543,16 @@ class ASNAutomation(PortalAutomationBase):
                 await search_box.fill(part)
                 await self.page.locator(s["part_search_go"]).first.click()
             link = self.page.locator(s["part_add_link"].replace("{part}", part)).first
+            # TAFE has changed the link wording/markup across portal pages.
+            # Fall back to the matching part row and any anchor containing
+            # "Add" so item selection remains data-driven, not positional.
+            if await link.count() == 0:
+                row = self.page.locator("tr").filter(has_text=part).first
+                link = row.locator("a").filter(has_text="Add").first
             try:
-                await link.wait_for(state="visible", timeout=15000)
+                await link.wait_for(state="visible", timeout=30000)
             except Exception:
-                raise AutomationError(f"Part {part} not found in PO parts list")
+                raise AutomationError(f"Part {part} not found in PO parts list or no Add-to-Invoice link was available")
             await link.click()
             await self.log("Parts Added", f"Part {part}: 'Click here to Add to Invoice' clicked")
             batches = await self.read_batches(part)
