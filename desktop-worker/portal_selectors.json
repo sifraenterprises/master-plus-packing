@@ -33,7 +33,7 @@
     "menu_create_asn": "a.noodle-leftnav-branch[href='/meta/default/wm_xt_fabricfolder/0000971290']",
     "po_dropdown": "select[id*='PONumber' i], select[id*='PONo' i], select[name*='PONumber' i]",
     "po_search": "input[type='submit'][value='Search'], button:has-text('Search'), [id*='btnSearch' i]",
-    "part_search_input": "input[id*='SearchPart' i], input[id*='Search' i][id*='Part' i], input[name*='Search' i][name*='Part' i], input[placeholder*='part number' i], input[placeholder*='search part' i]",
+    "part_search_input": "input[id$='filterInputForPartDtls__input'], input[id*='SearchPart' i], input[id*='Search' i][id*='Part' i], input[name*='Search' i][name*='Part' i], input[placeholder*='part number' i], input[placeholder*='search part' i]",
     "part_search_go": "input[type='submit'][value='Go'], button:has-text('Go'), [id*='btnGo' i]",
     "parts_table": "table:has-text('Part Number')",
     "part_add_link": "tr:has-text('{part}') a:has-text('Click here to Add to Invoice')",
