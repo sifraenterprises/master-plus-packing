@@ -468,7 +468,7 @@ class ASNAutomation(PortalAutomationBase):
         s = self.selectors["asn"]
         await self.page.click(s["menu_create_asn"])
         try:
-            await self.page.wait_for_selector(s["po_dropdown"], state="visible", timeout=10000)
+            await self.page.wait_for_selector(s["po_dropdown"], state="visible", timeout=30000)
         except Exception:
             # TAFE renders Create ASN inside an iframe. Continue using the
             # frame containing the PO selector when it is not on the top page.
@@ -476,7 +476,7 @@ class ASNAutomation(PortalAutomationBase):
                 if frame == self.page.main_frame:
                     continue
                 try:
-                    await frame.wait_for_selector(s["po_dropdown"], state="visible", timeout=10000)
+                    await frame.wait_for_selector(s["po_dropdown"], state="visible", timeout=30000)
                     self.page = frame
                     break
                 except Exception:

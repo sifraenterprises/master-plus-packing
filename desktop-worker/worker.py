@@ -199,6 +199,10 @@ async def execute_job(job: dict) -> dict:
             await bot.start(); await bot.login(); await bot.navigate_to_entry()
             result = await bot.run_asn(payload)
             result["submitted"] = not test_mode
+            if result.get("dry_run"):
+                hold = int(os.getenv("DRY_RUN_HOLD_SECONDS", "300"))
+                log.info("Dry run ready; keeping TAFE form open for %s seconds for review", hold)
+                await asyncio.sleep(max(0, hold))
             return result
         finally:
             await bot.close()
