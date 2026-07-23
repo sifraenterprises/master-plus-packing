@@ -619,9 +619,18 @@ class ASNAutomation(PortalAutomationBase):
         await self.log("Transporter Selected", data["transporter"])
         for attempt in (1, 2):
             try:
-                await self.page.locator(s["pdi_file_input"]).first.set_input_files(data["pdi_path"])
-                await self.page.locator(s["attach_button"]).first.click()
-                await self.page.wait_for_selector(s["attach_success"], state="visible", timeout=60000)
+                upload_page = self.page
+                file_loc = upload_page.locator(s["pdi_file_input"]).first
+                if await file_loc.count() == 0:
+                    root = upload_page.page if hasattr(upload_page, "page") else upload_page
+                    for frame in root.frames:
+                        candidate = frame.locator(s["pdi_file_input"]).first
+                        if await candidate.count() > 0:
+                            upload_page, file_loc = frame, candidate
+                            break
+                await file_loc.set_input_files(data["pdi_path"])
+                await upload_page.locator(s["attach_button"]).first.click()
+                await upload_page.wait_for_selector(s["attach_success"], state="visible", timeout=60000)
                 break
             except Exception as e:
                 if attempt == 1:
