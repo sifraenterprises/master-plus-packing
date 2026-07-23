@@ -465,7 +465,20 @@ class ASNAutomation(PortalAutomationBase):
             return
         s = self.selectors["asn"]
         await self.page.click(s["menu_create_asn"])
-        await self.page.wait_for_selector(s["po_dropdown"], state="visible")
+        try:
+            await self.page.wait_for_selector(s["po_dropdown"], state="visible", timeout=10000)
+        except Exception:
+            for frame in self.page.frames:
+                if frame == self.page.main_frame:
+                    continue
+                try:
+                    await frame.wait_for_selector(s["po_dropdown"], state="visible", timeout=10000)
+                    self.page = frame
+                    break
+                except Exception:
+                    continue
+            else:
+                raise AutomationError("Create ASN form did not load: PO dropdown was not found")
         await self.log("ASN Page Opened", "Opened Create ASN tab - ASN Creation Form loaded")
 
     def validate(self, data):
