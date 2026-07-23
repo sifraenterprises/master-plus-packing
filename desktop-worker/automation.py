@@ -109,8 +109,17 @@ class PortalAutomationBase:
         await self.log("Login Success", "Login verified")
 
     async def fill_and_verify(self, selector, value):
-        loc = self.page.locator(selector).first
-        await loc.wait_for(state="visible")
+        matches = self.page.locator(selector)
+        loc = None
+        for candidate in await matches.all():
+            try:
+                if await candidate.is_visible() and await candidate.is_editable():
+                    loc = candidate
+                    break
+            except Exception:
+                continue
+        if loc is None:
+            raise AutomationError(f"No visible editable field found for {selector}")
         await loc.fill(value)
         actual = await loc.input_value()
         if actual.strip() != value.strip():
