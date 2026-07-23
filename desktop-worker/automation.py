@@ -475,7 +475,7 @@ class ASNAutomation(PortalAutomationBase):
         except Exception:
             # The portal exposes both a left-nav item and a top tab with the
             # same label. Try each visible control before scanning frames.
-            controls = await self.page.get_by_text("Create ASN", exact=True).all()
+            controls = await self.page.get_by_text(re.compile(r"^Create(?: ASN| \.\.\.)$"), exact=True).all()
             for _ in range(3):
                 for control in controls:
                     try:
