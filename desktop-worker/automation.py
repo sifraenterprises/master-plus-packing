@@ -552,7 +552,22 @@ class ASNAutomation(PortalAutomationBase):
             try:
                 await link.wait_for(state="visible", timeout=30000)
             except Exception:
-                raise AutomationError(f"Part {part} not found in PO parts list or no Add-to-Invoice link was available")
+                # If the portal ignored its search box, walk the paginated
+                # parts table (without relying on a fixed row/index).
+                found = False
+                for _ in range(10):
+                    nxt = self.page.locator("a").filter(has_text="Next").first
+                    if await nxt.count() == 0 or not await nxt.is_visible():
+                        break
+                    await nxt.click()
+                    await self.page.wait_for_timeout(500)
+                    row = self.page.locator("tr").filter(has_text=part).first
+                    link = row.locator("a").filter(has_text="Add").first
+                    if await link.count() > 0 and await link.is_visible():
+                        found = True
+                        break
+                if not found:
+                    raise AutomationError(f"Part {part} not found in PO parts list or no Add-to-Invoice link was available")
             await link.click()
             await self.log("Parts Added", f"Part {part}: 'Click here to Add to Invoice' clicked")
             batches = await self.read_batches(part)
