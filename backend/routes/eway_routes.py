@@ -233,7 +233,7 @@ async def process_batch(ids: list[str], run_id: str, user: str, force_mode: str 
         run_state["running"] = False
 
 
-async def start_run(background_tasks: BackgroundTasks, ids: list[str], user: str):
+async def start_run(background_tasks: BackgroundTasks, ids: list[str], user: str, dry_run: bool = False):
     mode = await get_mode()  # blocks in maintenance / emergency stop before scheduling
     if run_state["running"]:
         raise HTTPException(status_code=409, detail="An automation run is already in progress")
@@ -255,7 +255,7 @@ async def start_run(background_tasks: BackgroundTasks, ids: list[str], user: str
                 await set_submission(rec_id, {"error": f"Skipped: {skip_reason}"})
                 continue
             job = await create_automation_job(
-                job_type="eway_bill_entry", payload={**payload, "dry_run": req.dry_run}, source_record_id=rec_id,
+                job_type="eway_bill_entry", payload={**payload, "dry_run": dry_run}, source_record_id=rec_id,
                 created_by=user, test_mode=is_test, priority=70,
             )
             await set_submission(rec_id, {
@@ -326,7 +326,7 @@ async def eway_stats(user: dict = Depends(get_current_user)):
 
 @router.post("/run")
 async def eway_run(req: RunRequest, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
-    result = await start_run(background_tasks, req.ids, user["username"])
+    result = await start_run(background_tasks, req.ids, user["username"], req.dry_run)
     await log_activity(user["username"], "eway_run", f"{len(req.ids)} record(s)", "eway")
     return result
 
