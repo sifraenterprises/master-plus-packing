@@ -469,6 +469,17 @@ class ASNAutomation(PortalAutomationBase):
             await self.log("ASN Page Opened", "[TEST] Opened Create ASN tab - ASN Creation Form loaded")
             return
         s = self.selectors["asn"]
+        manual_kickoff = os.getenv("MANUAL_CREATE_ASN", "false").lower() in ("1", "true", "yes")
+        if manual_kickoff:
+            await self.log("ASN Navigation", "Manual mode: click Create ASN in TAFE; waiting for PO dropdown")
+            for _ in range(300):
+                if await self.page.locator(s["po_dropdown"]).count() > 0:
+                    break
+                await self.page.wait_for_timeout(2000)
+            else:
+                raise AutomationError("Manual Create ASN wait expired: PO dropdown was not found")
+            await self.log("ASN Page Opened", "Create ASN form detected after manual kickoff")
+            return
         await self.page.click(s["menu_create_asn"])
         await self.page.wait_for_timeout(500)
         await self.page.click(s["menu_create_asn"])
