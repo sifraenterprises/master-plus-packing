@@ -1,8 +1,8 @@
 {
   "login": {
-    "username": "#txtUserName",
-    "password": "#txtPassword",
-    "submit": "#btnLogin",
+    "username": "#txtUserName, input[type='text'], input[type='email'], input[name*='User' i], input[id*='User' i]",
+    "password": "#txtPassword, input[type='password'], input[name*='Pass' i], input[id*='Pass' i]",
+    "submit": "#btnLogin, input[type='submit'], button[type='submit'], button:has-text('Log In'), button:has-text('Login')",
     "error_indicator": ".login-error, #lblError",
     "logged_in_indicator": "#divMainMenu, .main-menu, #logout"
   },
