@@ -470,6 +470,8 @@ class ASNAutomation(PortalAutomationBase):
             return
         s = self.selectors["asn"]
         await self.page.click(s["menu_create_asn"])
+        await self.page.wait_for_timeout(500)
+        await self.page.click(s["menu_create_asn"])
         try:
             await self.page.wait_for_selector(s["po_dropdown"], state="visible", timeout=120000)
         except Exception:
