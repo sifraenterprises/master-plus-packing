@@ -471,7 +471,7 @@ class ASNAutomation(PortalAutomationBase):
         s = self.selectors["asn"]
         await self.page.click(s["menu_create_asn"])
         try:
-            await self.page.wait_for_selector(s["po_dropdown"], state="visible", timeout=30000)
+            await self.page.wait_for_selector(s["po_dropdown"], state="visible", timeout=120000)
         except Exception:
             # The portal exposes both a left-nav item and a top tab with the
             # same label. Try each visible control before scanning frames.

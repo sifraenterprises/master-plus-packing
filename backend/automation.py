@@ -471,7 +471,7 @@ class ASNAutomation(PortalAutomationBase):
         s = self.selectors["asn"]
         await self.page.click(s["menu_create_asn"])
         try:
-            await self.page.wait_for_selector(s["po_dropdown"], state="visible", timeout=30000)
+            await self.page.wait_for_selector(s["po_dropdown"], state="visible", timeout=120000)
         except Exception:
             controls = await self.page.get_by_text(re.compile(r"^Create(?: ASN| \.\.\.)$"), exact=True).all()
             for _ in range(3):
