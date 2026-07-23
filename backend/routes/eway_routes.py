@@ -29,9 +29,16 @@ router = APIRouter(prefix="/eway", tags=["eway"])
 async def delete_record(record_id: str, user: dict = Depends(require_admin)):
     if not ObjectId.is_valid(record_id):
         raise HTTPException(status_code=400, detail="Invalid E-Way record id")
-    result = await db.eway_submissions.delete_one({"_id": ObjectId(record_id), "status": {"$nin": ["Processing"]}})
-    if not result.deleted_count:
-        raise HTTPException(status_code=409, detail="Processing or missing E-Way records cannot be deleted")
+    # The E-Way table is joined to master_dispatch; its row id is stored in
+    # submissions.record_id, not submissions._id.  Deleting by _id made every
+    # normal row look "missing" (and consequently undeletable).
+    submission = await db.eway_submissions.find_one({"record_id": record_id})
+    if submission and submission.get("status") == "Processing":
+        raise HTTPException(status_code=409, detail="Processing E-Way records cannot be deleted")
+    result = await db.eway_submissions.delete_one({"record_id": record_id})
+    if not result.deleted_count and not await db.master_dispatch.find_one({"_id": ObjectId(record_id)}):
+        raise HTTPException(status_code=404, detail="E-Way record not found")
+    await log_activity(user["username"], "eway_record_deleted", record_id, "eway")
     return {"deleted": True}
 logger = logging.getLogger(__name__)
 
@@ -43,6 +50,7 @@ run_state = {"running": False, "run_id": None, "module": None, "total": 0, "proc
 
 class RunRequest(BaseModel):
     ids: list[str] = []
+    dry_run: bool = False
 
 
 class ModeRequest(BaseModel):
@@ -247,7 +255,7 @@ async def start_run(background_tasks: BackgroundTasks, ids: list[str], user: str
                 await set_submission(rec_id, {"error": f"Skipped: {skip_reason}"})
                 continue
             job = await create_automation_job(
-                job_type="eway_bill_entry", payload=payload, source_record_id=rec_id,
+                job_type="eway_bill_entry", payload={**payload, "dry_run": req.dry_run}, source_record_id=rec_id,
                 created_by=user, test_mode=is_test, priority=70,
             )
             await set_submission(rec_id, {

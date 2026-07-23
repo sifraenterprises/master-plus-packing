@@ -160,6 +160,7 @@ class EWayBillAutomation(PortalAutomationBase):
         await self.log("Navigation", "Opened E-Way Bill Entry page")
 
     async def fill_form(self, data):
+        self.dry_run = bool(data.get("dry_run"))
         if self.is_test:
             await asyncio.sleep(0.3)
             if "ERR" in (data.get("eway_bill_number") or "").upper():
@@ -201,7 +202,8 @@ class EWayBillAutomation(PortalAutomationBase):
         if self.is_test:
             await asyncio.sleep(0.2)
             return
-        await self.page.click(self.selectors["eway"]["submit"])
+        if not getattr(self, "dry_run", False):
+            await self.page.click(self.selectors["eway"]["submit"])
 
     async def verify_success(self):
         if self.is_test:
@@ -347,6 +349,9 @@ class VendorAckAutomation(PortalAutomationBase):
         await self.log("Checkbox Ticked", "ASN Details row selected")
 
         before = await self.capture_screenshot(f"vack_before_{data['asn_number']}")
+        if data.get("dry_run"):
+            await self.log("Dry Run Ready", "Form filled and verified; Submit was not clicked")
+            return {"before_submit": before, "message": "Dry Run Ready", "dry_run": True}
         await self.page.locator(s["submit"]).first.click()
         await self.log("Button Clicked", "Submit clicked - waiting for confirmation")
         try:

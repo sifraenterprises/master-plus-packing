@@ -92,13 +92,12 @@ export default function VendorAckModule() {
   };
 
   const startAutomation = async () => {
-    if (stopBeforeSubmit) return toast.info("Stopped before submit");
     if (!panel) return;
     setRunning(true);
     try {
       await api.post("/vendor-ack/run", {
         dispatch_id: panel.dispatch_id, company_code: panel.company_code,
-        transporter: panel.transporter, plant: panel.plant,
+        transporter: panel.transporter, plant: panel.plant, dry_run: stopBeforeSubmit,
       });
       toast.info(`Automation started for ${panel.dispatch_no}`);
       load();

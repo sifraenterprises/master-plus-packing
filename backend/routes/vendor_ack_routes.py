@@ -59,6 +59,7 @@ class AckRunRequest(BaseModel):
     company_code: str = "TMTL"
     transporter: str = ""
     plant: str = ""
+    dry_run: bool = False
 
 
 def now_iso():
@@ -304,7 +305,7 @@ async def vendor_ack_run(req: AckRunRequest, background_tasks: BackgroundTasks, 
         job = await create_automation_job(
             job_type="vendor_eway_acknowledgement",
             payload={"company_code": doc["company_code"], "transporter": doc["transporter"],
-                     "plant": doc["plant"], "asn_number": doc["asn_number"]},
+                     "plant": doc["plant"], "asn_number": doc["asn_number"], "dry_run": req.dry_run},
             source_record_id=ack_id, created_by=user["username"],
             test_mode=is_test, priority=80,
         )

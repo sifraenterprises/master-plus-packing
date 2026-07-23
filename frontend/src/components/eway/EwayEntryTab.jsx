@@ -98,12 +98,11 @@ export default function EwayEntryTab() {
   }, [running, fetchData]);
 
   const startRun = async (endpoint, body) => {
-    if (stopBeforeSubmit) return toast.info("Stopped before submit");
     try {
-      const res = await api.post(endpoint, body || {});
+      const res = await api.post(endpoint, { ...(body || {}), dry_run: stopBeforeSubmit });
       setRunning(true);
       setRunInfo({ running: true, total: res.data.total, processed: 0 });
-      toast.info(`Run started: ${res.data.total} record(s)`);
+      toast.info(`${stopBeforeSubmit ? "Dry-run filling TAFE form" : "Run started"}: ${res.data.total} record(s)`);
     } catch (err) {
       toast.error(apiError(err));
     }
