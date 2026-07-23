@@ -616,7 +616,7 @@ class ASNAutomation(PortalAutomationBase):
         await self.fill_and_verify(s["invoice_date"], data["invoice_date"])
         await self.fill_and_verify(s["basic_amount"], str(data["basic_amount"]))
         await self.fill_and_verify(s["total_amount"], str(data["total_amount"]))
-        for opt_field in ("cgst", "sgst", "igst", "no_of_cases"):
+        for opt_field in ("cgst", "sgst"):
             value = data.get(opt_field)
             if value:
                 try:
