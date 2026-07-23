@@ -92,7 +92,20 @@ class PortalAutomationBase:
         except Exception:
             if await self.page.locator(s["error_indicator"]).count() > 0:
                 raise AutomationError("Login failed: portal rejected credentials")
-            raise AutomationError("Login failed: could not verify logged-in state")
+            # TAFE's current portal does not expose the old #divMainMenu/.main-menu
+            # ids.  Accept the stable post-login page markers instead.
+            try:
+                await self.page.wait_for_function(
+                    """() => {
+                      const body = (document.body?.innerText || '').toLowerCase();
+                      const url = (location.href || '').toLowerCase();
+                      return body.includes('welcome') || body.includes('applications') ||
+                             body.includes('logout') || url.includes('user.current.start.page');
+                    }""",
+                    timeout=20000,
+                )
+            except Exception:
+                raise AutomationError("Login failed: could not verify logged-in state")
         await self.log("Login Success", "Login verified")
 
     async def fill_and_verify(self, selector, value):
