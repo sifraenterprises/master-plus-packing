@@ -44,6 +44,7 @@ HEADLESS = os.environ.get("HEADLESS", "false").lower() == "true"
 TEST_MODE = os.environ.get("TEST_MODE", "true").lower() == "true"
 POLL_SECONDS = max(3, int(os.environ.get("POLL_INTERVAL_SECONDS", "3")))
 HEARTBEAT_SECONDS = max(10, int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "30")))
+PDI_FOLDER = os.environ.get("PDI_FOLDER", "").strip()
 
 
 class ApiClient:
@@ -108,6 +109,22 @@ class ApiClient:
 api = ApiClient()
 current_job_id: str | None = None
 stop_event = threading.Event()
+
+
+def find_local_pdi(invoice_no: str) -> Path | None:
+    """Find a local PDF whose filename contains the invoice number."""
+    if not PDI_FOLDER:
+        return None
+    folder = Path(PDI_FOLDER).expanduser()
+    if not folder.is_dir():
+        raise RuntimeError(f"PDI_FOLDER does not exist: {folder}")
+    key = "".join(ch.lower() for ch in str(invoice_no) if ch.isalnum())
+    candidates = sorted(folder.rglob("*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for candidate in candidates:
+        name_key = "".join(ch.lower() for ch in candidate.stem if ch.isalnum())
+        if key and key in name_key:
+            return candidate
+    return None
 
 
 def validate_config() -> None:
@@ -184,8 +201,12 @@ async def execute_job(job: dict) -> dict:
         bot = ASNAutomation(mode=mode, headless=HEADLESS, log=remote_log)
         allocations = payload.pop("batch_allocations", {})
         temporary_dir = Path(tempfile.mkdtemp(prefix="grewal-asn-"))
-        pdi_path = temporary_dir / "pdi.pdf"
-        api.download_document(jid, pdi_path)
+        pdi_path = find_local_pdi(payload.get("invoice_no", ""))
+        if pdi_path:
+            log.info("Using local PDI: %s", pdi_path)
+        else:
+            pdi_path = temporary_dir / "pdi.pdf"
+            api.download_document(jid, pdi_path)
         payload["pdi_path"] = str(pdi_path)
 
         async def allocation_cb(part, qty, batches):
