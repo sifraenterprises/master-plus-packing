@@ -556,6 +556,21 @@ class ASNAutomation(PortalAutomationBase):
                 # parts table (without relying on a fixed row/index).
                 found = False
                 for _ in range(10):
+                    # Inspect visible Add-to-Invoice anchors and their row
+                    # text; this matches TAFE's current table markup.
+                    for anchor in await self.page.locator("a").all():
+                        try:
+                            if "add to invoice" not in (await anchor.inner_text()).lower():
+                                continue
+                            row_text = (await anchor.locator("xpath=ancestor::tr[1]").inner_text()).strip()
+                            if part in row_text:
+                                link = anchor
+                                found = True
+                                break
+                        except Exception:
+                            continue
+                    if found:
+                        break
                     nxt = self.page.locator("a").filter(has_text="Next").first
                     if await nxt.count() == 0 or not await nxt.is_visible():
                         break
