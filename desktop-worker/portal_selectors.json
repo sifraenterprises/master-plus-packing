@@ -53,7 +53,7 @@
     "transporter": "select[id*='Transporter' i], select[name*='Transporter' i]",
     "pdi_file_input": "input[id$=':defaultForm:file'], input[type='file']",
     "attach_button": "span.caf-button-l:has-text('Attach'), input[type='submit'][value='Attach'], button:has-text('Attach'), [id*='btnAttach' i]",
-    "attach_success": "[id*='lblAttach' i], :text('uploaded successfully'), :text('Attached Successfully')",
+    "attach_success": "a[id$=':defaultForm:attachedFileNameLink'], [id*='lblAttach' i], :text('uploaded successfully'), :text('Attached Successfully')",
     "create_asn_button": "input[type='submit'][value='Create ASN'], button:has-text('Create ASN'), [id*='btnCreateASN' i]",
     "asn_number_indicator": "[id*='lblASN' i], [id*='ASNNo' i], .success-message",
     "error_indicator": ".error-message, [id*='lblError' i]"
