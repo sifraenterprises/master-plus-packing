@@ -110,7 +110,7 @@ export default function PrintEwayModule() {
   const openLogs = async (r) => {
     setLogsFor(r);
     try {
-      const { data } = await api.get("/eway-print/logs", { params: { dispatch_no: r.dispatch_no, limit: 100 } });
+      const { data } = await api.get("/eway-print/logs", { params: { dispatch_no: r.dispatch_no, run_id: r.run_id || undefined, limit: 200 } });
       setLogs(data);
     } catch { setLogs([]); }
   };

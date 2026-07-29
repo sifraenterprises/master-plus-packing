@@ -57,6 +57,7 @@ def job_out(d: dict) -> dict:
             "error_message": d.get("error_message", ""), "pdf_name": d.get("pdf_name", ""),
             "has_pdf": bool(d.get("pdf_path")), "screenshots": d.get("screenshots", {}),
             "retry_count": d.get("retry_count", 0), "last_run_at": d.get("last_run_at", ""),
+            "run_id": d.get("run_id", ""),
             "created_at": d.get("created_at", ""), "updated_at": d.get("updated_at", "")}
 
 
@@ -351,9 +352,12 @@ async def job_screenshot(name: str, user: dict = Depends(get_current_user)):
 async def job_logs(run_id: str = None, dispatch_no: str = None, limit: int = 150,
                    user: dict = Depends(get_current_user)):
     query = {"module": "eway_print"}
-    if run_id:
+    if run_id and dispatch_no:
         query["run_id"] = run_id
-    if dispatch_no:
+        query["$or"] = [{"dispatch_id": dispatch_no}, {"dispatch_id": None}]
+    elif run_id:
+        query["run_id"] = run_id
+    elif dispatch_no:
         query["dispatch_id"] = dispatch_no
     docs = await db.automation_logs.find(query, {"_id": 0}).sort("timestamp", -1).to_list(min(limit, 500))
     return docs
