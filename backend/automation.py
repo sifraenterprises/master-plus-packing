@@ -701,3 +701,155 @@ async def validate_portal(attempt_login=False, headless=True, log=None, dry_run_
             pass
         await emit("Validation Finished", f"{sum(1 for r in results if r['status']=='ok')}/{len(results)} checks passed")
     return results
+
+
+class EwayPrintAutomation(PortalAutomationBase):
+    """Read-only 'Print EWB' job on the government e-way bill portal.
+    The user completes username/password/CAPTCHA/OTP manually in a VISIBLE browser;
+    credentials are never stored or automated. This class only navigates Print EWB,
+    verifies the number and downloads the PDF — it never generates, cancels,
+    updates or submits e-way bills."""
+
+    module = "eway_print"
+    login_wait_cb = None   # async () -> None; pauses until the user confirms manual login
+    review_wait_cb = None  # async () -> None; pauses before print/download when requested
+
+    def _s(self):
+        return self.selectors.get("eway_print", {})
+
+    async def start_session(self):
+        s = self._s()
+        url = s.get("login_url", "https://ewaybillgst.gov.in/login.aspx")
+        if not url.startswith("https://"):
+            raise AutomationError("E-Way Bill portal URL must use HTTPS")
+        if self.is_test:
+            await self.log("Portal Opened", f"[TEST] Simulated opening of {url} in a visible browser")
+        else:
+            from playwright.async_api import async_playwright
+            self.pw = await async_playwright().start()
+            self.browser = await self.pw.chromium.launch(headless=False)  # must stay visible for manual login
+            self.page = await self.browser.new_page()
+            self.page.set_default_timeout(30000)
+            await self.page.goto(url, wait_until="domcontentloaded")
+            await self.log("Portal Opened", f"Login page opened in a visible browser: {url}")
+        await self.log("Manual Login Wait",
+                       ("[TEST] " if self.is_test else "") +
+                       "Waiting for the user to complete username, password, CAPTCHA and OTP manually - never automated")
+        if not self.login_wait_cb:
+            raise AutomationError("Manual portal login required but no wait handler is attached")
+        await self.login_wait_cb()
+        if not self.is_test:
+            try:
+                await self.page.wait_for_selector(s.get("logged_in_indicator", "a"), state="visible", timeout=10000)
+            except Exception:
+                await self.log("Login Check", "Could not verify logged-in indicator - continuing on user confirmation", level="WARN")
+        await self.log("Login Confirmed", ("[TEST] " if self.is_test else "") + "User confirmed portal login")
+
+    async def print_one(self, ewb_display: str, stop_before_download: bool, download_dir, dispatch_no: str):
+        digits = re.sub(r"\D", "", ewb_display or "")
+        if len(digits) != 12:
+            raise AutomationError(f"Invalid E-Way Bill number '{ewb_display}' - must be exactly 12 digits")
+        result = {"shots": {}}
+        if self.is_test:
+            return await self._print_one_test(digits, stop_before_download, download_dir, dispatch_no, result)
+        s = self._s()
+        await self.page.goto(s["print_url"], wait_until="domcontentloaded")
+        await self.log("Print EWB Opened", f"Print EWB page opened for {digits}", dispatch_no)
+        await self.fill_and_verify(s["ewb_input"], digits)
+        await self.page.click(s["go_button"])
+        try:
+            await self.page.wait_for_selector(f"{s['result_number']}, {s['not_found_indicator']}", timeout=30000)
+        except Exception:
+            raise AutomationError("Portal did not return a result for the E-Way Bill number")
+        if await self.page.locator(s["not_found_indicator"]).count() > 0:
+            raise AutomationError(f"E-Way Bill {digits} not found on the portal - stopping (nothing printed)")
+        numbers = self.page.locator(s["result_number"])
+        count = await numbers.count()
+        if count == 0:
+            raise AutomationError(f"E-Way Bill {digits}: result number not visible - stopping (ambiguous result)")
+        if count > 1:
+            texts = {re.sub(r"\D", "", (await numbers.nth(i).inner_text()) or "") for i in range(count)}
+            texts.discard("")
+            if len(texts) != 1:
+                raise AutomationError(f"E-Way Bill {digits}: multiple different numbers on screen {sorted(texts)} - ambiguous, stopping")
+            shown = texts.pop()
+        else:
+            shown = re.sub(r"\D", "", (await numbers.first.inner_text()) or "")
+        if shown != digits:
+            raise AutomationError(f"E-Way Bill mismatch: requested {digits} but portal shows {shown or 'nothing'} - stopping (nothing printed)")
+        await self.log("Result Verified", f"Portal shows E-Way Bill {shown} - matches the requested number", dispatch_no)
+        result["shots"]["result"] = await self.capture_screenshot(f"ewbprint_result_{digits}")
+        if stop_before_download:
+            await self.log("Review Wait", f"Paused before print/download of {digits} for user review", dispatch_no)
+            if not self.review_wait_cb:
+                raise AutomationError("Review pause requested but no wait handler is attached")
+            await self.review_wait_cb()
+            await self.log("Review Confirmed", f"User approved print/download of {digits}", dispatch_no)
+        pdf_path = Path(download_dir) / f"EWB_{digits}.pdf"
+        downloaded = False
+        try:
+            async with self.page.expect_download(timeout=20000) as dl_info:
+                await self.page.click(s["print_button"])
+            dl = await dl_info.value
+            await dl.save_as(str(pdf_path))
+            downloaded = True
+            await self.log("PDF Downloaded", f"E-Way Bill {digits} PDF downloaded from the portal", dispatch_no)
+        except Exception as e:
+            await self.log("Download Fallback", f"No direct download offered ({str(e)[:80]}) - capturing the page as PDF", dispatch_no, "WARN")
+        if not downloaded:
+            png = Path(download_dir) / f"EWB_{digits}.png"
+            await self.page.screenshot(path=str(png), full_page=True)
+            _png_to_pdf(png, pdf_path)
+            png.unlink(missing_ok=True)
+            await self.log("PDF Captured", f"E-Way Bill {digits} page captured and saved as PDF", dispatch_no)
+        result["shots"]["after_download"] = await self.capture_screenshot(f"ewbprint_done_{digits}")
+        result["pdf_path"] = str(pdf_path)
+        result["pdf_name"] = pdf_path.name
+        return result
+
+    async def _print_one_test(self, digits, stop_before_download, download_dir, dispatch_no, result):
+        await self.log("Print EWB Opened", f"[TEST] Print EWB page opened for {digits}", dispatch_no)
+        await self.log("Number Entered", f"[TEST] Entered {digits} and clicked GO", dispatch_no)
+        await asyncio.sleep(0.2)
+        if digits.startswith("999"):
+            raise AutomationError(f"[TEST] E-Way Bill {digits} not found on the portal - stopping (nothing printed)")
+        if digits.startswith("998"):
+            raise AutomationError(f"[TEST] E-Way Bill mismatch: requested {digits} but portal shows different number - stopping (nothing printed)")
+        await self.log("Result Verified", f"[TEST] Portal shows E-Way Bill {digits} - matches the requested number", dispatch_no)
+        result["shots"]["result"] = await self.capture_screenshot(f"ewbprint_result_{digits}")
+        if stop_before_download:
+            await self.log("Review Wait", f"[TEST] Paused before print/download of {digits} for user review", dispatch_no)
+            if not self.review_wait_cb:
+                raise AutomationError("Review pause requested but no wait handler is attached")
+            await self.review_wait_cb()
+            await self.log("Review Confirmed", f"[TEST] User approved print/download of {digits}", dispatch_no)
+        pdf_path = Path(download_dir) / f"EWB_{digits}.pdf"
+        _placeholder_pdf(pdf_path, digits)
+        await self.log("PDF Downloaded", f"[TEST] Simulated E-Way Bill PDF saved: {pdf_path.name}", dispatch_no)
+        result["shots"]["after_download"] = await self.capture_screenshot(f"ewbprint_done_{digits}")
+        result["pdf_path"] = str(pdf_path)
+        result["pdf_name"] = pdf_path.name
+        return result
+
+
+def _placeholder_pdf(path, digits):
+    from reportlab.pdfgen import canvas
+    c = canvas.Canvas(str(path))
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(72, 780, "E-WAY BILL (TEST MODE SIMULATION)")
+    c.setFont("Helvetica", 12)
+    c.drawString(72, 750, f"E-Way Bill No: {digits}")
+    c.drawString(72, 730, "This PDF was generated by the TEST simulation - no portal was contacted.")
+    c.showPage()
+    c.save()
+
+
+def _png_to_pdf(png_path, pdf_path):
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas
+    img = ImageReader(str(png_path))
+    w, h = img.getSize()
+    c = canvas.Canvas(str(pdf_path), pagesize=(w, h))
+    c.drawImage(img, 0, 0, width=w, height=h)
+    c.showPage()
+    c.save()

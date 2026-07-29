@@ -83,5 +83,16 @@
     "submit": "#btnSubmit",
     "success_indicator": ".success-message, #lblSuccess",
     "error_indicator": ".error-message, #lblErrorMsg"
+  },
+  "eway_print": {
+    "login_url": "https://ewaybillgst.gov.in/login.aspx",
+    "print_url": "https://ewaybillgst.gov.in/Others/EBPrint.aspx",
+    "logged_in_indicator": "#lnkLogout, a:has-text('Logout')",
+    "ewb_input": "#txtEwbNo, input[id*='EwbNo']",
+    "go_button": "#btnGo, input[value='Go']",
+    "result_number": "#lblEwbNo, span[id*='EwbNo']",
+    "not_found_indicator": "text=/no records? found|invalid e-?way bill/i",
+    "detail_container": "#tblEwayBill, table[id*='EwayBill']",
+    "print_button": "#btnPrint, input[value*='Print'], a:has-text('Print')"
   }
 }

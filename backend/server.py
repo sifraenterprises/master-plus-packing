@@ -27,6 +27,7 @@ from routes.system_routes import router as system_router
 from routes.environment_routes import router as environment_router
 from routes.pdi_routes import router as pdi_router
 from routes.documents_routes import router as documents_router, seed_document_types
+from routes.eway_print_routes import router as eway_print_router
 
 REQUIRED_ENV = ["MONGO_URL", "DB_NAME", "JWT_SECRET", "ADMIN_USERNAME", "ADMIN_PASSWORD",
                 "DISPATCH_USERNAME", "DISPATCH_PASSWORD"]
@@ -103,6 +104,7 @@ api_router.include_router(system_router)
 api_router.include_router(environment_router)
 api_router.include_router(pdi_router)
 api_router.include_router(documents_router)
+api_router.include_router(eway_print_router)
 api_router.include_router(public_router)
 app.include_router(api_router)
 

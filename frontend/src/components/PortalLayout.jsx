@@ -21,6 +21,7 @@ const AUTOMATION_SUBMENU = [
   { to: "/portal/modules/asn", label: "ASN Creation" },
   { to: "/portal/modules/eway-bill", label: "E-Way Bill Entry" },
   { to: "/portal/modules/vendor-ack", label: "Vendor E-Way Bill Ack." },
+  { to: "/portal/modules/print-eway", label: "Print E-Way Bill" },
 ];
 
 const NAV = [
