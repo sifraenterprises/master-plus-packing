@@ -379,6 +379,12 @@ class ASNAutomation(PortalAutomationBase):
     attach PDI, Create ASN and capture the generated ASN number. Configurable selectors, no fixed waits live."""
     module = "asn"
     allocation_cb = None  # async (part, asn_qty, batches) -> allocations; set by route layer
+    pdi_wait_cb = None  # async () -> None; pauses until user confirms manual PDI upload; set by route layer
+
+    async def _wait_pdi(self):
+        if not self.pdi_wait_cb:
+            raise AsnValidationError("Manual PDI upload required but no wait handler is attached")
+        await self.pdi_wait_cb()
 
     def _simulate_batches(self, part, qty):
         up = part.upper()
@@ -461,8 +467,6 @@ class ASNAutomation(PortalAutomationBase):
             missing.append("basic_amount")
         if float(data.get("total_amount") or 0) <= 0:
             missing.append("total_amount")
-        if not data.get("pdi_path") or not os.path.exists(str(data.get("pdi_path") or "")):
-            missing.append("PDI document (generate it in the AI PDI Generator - it auto-attaches to the dispatch)")
         if missing:
             raise AsnValidationError("Validation failed - missing: " + ", ".join(missing))
 
@@ -490,7 +494,9 @@ class ASNAutomation(PortalAutomationBase):
                     await self.log("Parts Added", f"[TEST] Part {part}: added to invoice, ASN Qty {qty}")
             await self.log("Invoice Filled", f"[TEST] Invoice {data['invoice_no']} dt {data['invoice_date']} basic {data['basic_amount']} total {data['total_amount']}")
             await self.log("Transporter Selected", f"[TEST] {data['transporter']}")
-            await self.log("PDF Attached", f"[TEST] PDI attached: {os.path.basename(data['pdi_path'])}")
+            await self.log("PDI Section", "[TEST] Reached PDI attachment stage - waiting for manual PDI upload")
+            await self._wait_pdi()
+            await self.log("PDI Uploaded", "[TEST] Manual PDI upload confirmed - clicking Create ASN")
             shot = await self.capture_screenshot(f"asn_before_{data['invoice_no'].replace('/', '-')}")
             import random
             asn_no = f"ASN{datetime.now(timezone.utc):%y}{random.randint(100000, 999999)}"
@@ -543,18 +549,13 @@ class ASNAutomation(PortalAutomationBase):
         await self.log("Invoice Filled", f"Invoice {data['invoice_no']} details entered")
         await self.select_by_label(s["transporter"], data["transporter"])
         await self.log("Transporter Selected", data["transporter"])
-        for attempt in (1, 2):
-            try:
-                await self.page.locator(s["pdi_file_input"]).first.set_input_files(data["pdi_path"])
-                await self.page.locator(s["attach_button"]).first.click()
-                await self.page.wait_for_selector(s["attach_success"], state="visible", timeout=60000)
-                break
-            except Exception as e:
-                if attempt == 1:
-                    await self.log("PDF Attach Retry", f"PDI upload not accepted ({str(e)[:100]}) - retrying once", level="WARN")
-                    continue
-                raise AutomationError(f"PDI upload to portal failed after retry: {str(e)[:150]}")
-        await self.log("PDF Attached", f"PDI attached & accepted by portal: {os.path.basename(data['pdi_path'])}")
+        try:
+            await self.page.locator(s["pdi_file_input"]).first.scroll_into_view_if_needed()
+        except Exception:
+            pass
+        await self.log("PDI Section", "Reached PDI attachment stage - browser session stays open; upload the PDI PDF directly on the portal")
+        await self._wait_pdi()
+        await self.log("PDI Uploaded", "Manual PDI upload confirmed - clicking Create ASN")
         shot = await self.capture_screenshot(f"asn_before_{data['invoice_no'].replace('/', '-')}")
         await self.page.locator(s["create_asn_button"]).first.click()
         try:

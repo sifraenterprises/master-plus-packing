@@ -7,7 +7,7 @@ import asyncio
 import logging
 from typing import Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse, FileResponse
 from bson import ObjectId
 from pydantic import BaseModel, Field
@@ -23,14 +23,14 @@ router = APIRouter(prefix="/asn", tags=["asn"])
 logger = logging.getLogger(__name__)
 
 ROOT_DIR = Path(__file__).parent.parent
-PDI_DIR = ROOT_DIR / "uploads" / "pdi"
-PDI_DIR.mkdir(parents=True, exist_ok=True)
 MAX_RETRIES = 3
 ALLOCATION_TIMEOUT = 900
+PDI_WAIT_TIMEOUT = 900
 
 run_state = {"running": False, "run_id": None, "total": 0, "processed": 0, "current": None,
-             "started_at": None, "awaiting_allocation": None}
+             "started_at": None, "awaiting_allocation": None, "phase": None, "awaiting_pdi": None}
 alloc_state = {"event": None, "record_id": None, "batches": [], "asn_qty": 0, "result": None, "cancelled": False}
+pdi_state = {"event": None, "record_id": None, "cancelled": False}
 
 
 class RunRequest(BaseModel):
@@ -61,8 +61,7 @@ def serialize(a: dict) -> dict:
 
 def compute_status(doc: dict) -> str:
     ready = all(str(doc.get(k) or "").strip() for k in ("po_number", "invoice_no", "invoice_date", "transporter")) \
-        and doc.get("items") and float(doc.get("total_amount") or 0) > 0 \
-        and str(doc.get("pdi_file_path") or "").strip()
+        and doc.get("items") and float(doc.get("total_amount") or 0) > 0
     return "Ready" if ready else "Draft"
 
 
@@ -130,8 +129,36 @@ async def process_queue(ids: list[str], run_id: str, user: str):
             })
         return result
 
+    async def request_pdi_upload():
+        """Pauses at the PDI attachment stage until the user confirms the manual PDI upload."""
+        oid = current_oid["v"]
+        rid = str(oid)
+        ev = asyncio.Event()
+        pdi_state.update({"event": ev, "record_id": rid, "cancelled": False})
+        run_state["phase"] = "Waiting for manual PDI upload"
+        run_state["awaiting_pdi"] = {"record_id": rid, "invoice_no": run_state["current"],
+                                     "requested_at": now_iso(), "timeout_seconds": PDI_WAIT_TIMEOUT}
+        await db.asn_creation.update_one({"_id": oid}, {"$set": {"status": "Waiting for PDI Upload", "updated_at": now_iso()}})
+        await append_log(oid, run_id, "PDI Upload Wait",
+                         "Paused at PDI attachment stage - upload the AI-generated PDI PDF on the portal, then click 'Resume after PDI upload'")
+        try:
+            await asyncio.wait_for(ev.wait(), timeout=PDI_WAIT_TIMEOUT)
+        except asyncio.TimeoutError:
+            raise AsnValidationError("Timed out waiting for manual PDI upload (15 minutes) - ASN was NOT submitted")
+        finally:
+            run_state["awaiting_pdi"] = None
+            pdi_state["event"] = None
+        if pdi_state["cancelled"]:
+            raise AsnValidationError("Manual PDI upload cancelled by user - ASN was NOT submitted")
+        run_state["phase"] = "PDI uploaded"
+        await db.asn_creation.update_one({"_id": oid}, {"$set": {"status": "Processing", "updated_at": now_iso()}})
+        await append_log(oid, run_id, "PDI Uploaded", "Manual PDI upload confirmed by user")
+        run_state["phase"] = "Ready to submit"
+        run_state["phase"] = "Creating ASN"
+
     bot = ASNAutomation(mode=mode, headless=headless, log=log)
     bot.allocation_cb = request_allocation
+    bot.pdi_wait_cb = request_pdi_upload
     try:
         if mode == "live":
             bot.require_env()
@@ -145,8 +172,10 @@ async def process_queue(ids: list[str], run_id: str, user: str):
                 run_state["processed"] += 1
                 continue
             run_state["current"] = doc.get("invoice_no")
+            run_state["phase"] = "Starting"
             record_allocs["v"] = list(doc.get("batch_allocations") or [])
             await db.asn_creation.update_one({"_id": oid}, {"$set": {"status": "Processing", "error_message": "", "updated_at": now_iso()}})
+            run_state["phase"] = "Filling ASN details"
             data = {
                 "po_number": doc.get("po_number", ""), "invoice_no": doc.get("invoice_no", ""),
                 "invoice_date": to_dmy(doc.get("invoice_date", "")),
@@ -154,7 +183,6 @@ async def process_queue(ids: list[str], run_id: str, user: str):
                 "cgst": doc.get("cgst", 0), "sgst": doc.get("sgst", 0), "igst": doc.get("igst", 0),
                 "no_of_cases": doc.get("no_of_cases", 0),
                 "transporter": doc.get("transporter", ""), "items": doc.get("items", []),
-                "pdi_path": doc.get("pdi_file_path", ""),
             }
             status, error_message, asn_number, screenshots = "Failed", "", "", dict(doc.get("screenshots") or {})
             attempts = 0
@@ -221,14 +249,8 @@ async def process_queue(ids: list[str], run_id: str, user: str):
                         {"_id": ObjectId(doc["master_dispatch_id"])},
                         {"$set": {"asn_number": asn_number, "status": "ready_for_eway", "updated_at": now_iso()}},
                     )
-                    await db.master_dispatch.update_one(
-                        {"_id": ObjectId(doc["master_dispatch_id"]), "documents.type": "PDI"},
-                        {"$set": {"documents.$.upload_status": "Uploaded to Portal",
-                                  "documents.$.last_upload_at": now_iso(),
-                                  "pdi_upload_status": "Uploaded to Portal",
-                                  "pdi_last_upload_at": now_iso()}},
-                    )
                     await log("ASN Number Captured", f"{asn_number} linked to Master Dispatch - available to E-Way Bill & Vendor Ack modules", level="SUCCESS")
+            run_state["phase"] = status
             await db.asn_creation.update_one({"_id": oid}, {"$set": update})
             if status == "Failed":
                 await send_alert("ASN automation failed",
@@ -244,8 +266,11 @@ async def process_queue(ids: list[str], run_id: str, user: str):
         await bot.close()
         run_state["running"] = False
         run_state["current"] = None
+        run_state["phase"] = None
         run_state["awaiting_allocation"] = None
+        run_state["awaiting_pdi"] = None
         alloc_state["event"] = None
+        pdi_state["event"] = None
 
 
 # ---------- Import ----------
@@ -259,8 +284,6 @@ async def import_from_md(user: dict = Depends(get_current_user)):
         mid = str(md["_id"])
         if mid in existing_ids:
             continue
-        pdi_doc = next((d for d in (md.get("documents") or []) if d.get("type") == "PDI"), None)
-        pdi_path = pdi_doc.get("file_path", "") if pdi_doc else ""
         doc = {
             "master_dispatch_id": mid, "dispatch_no": md.get("dispatch_no", ""),
             "invoice_no": md.get("invoice_number", ""), "invoice_date": md.get("invoice_date", ""),
@@ -273,8 +296,6 @@ async def import_from_md(user: dict = Depends(get_current_user)):
             "no_of_cases": int(md.get("boxes") or 0),
             "items": [{"part_number": i.get("part_number", ""), "description": i.get("description", ""),
                        "quantity": i.get("quantity", 0)} for i in (md.get("items") or []) if i.get("part_number")],
-            "pdi_file_path": pdi_path if pdi_path and os.path.exists(pdi_path) else "",
-            "pdi_file_name": f"{pdi_doc.get('report_no', '')}.pdf" if pdi_doc and pdi_path and os.path.exists(pdi_path) else "",
             "asn_number": "", "error_message": "",
             "automation_log": [], "screenshots": {},
             "created_at": now_iso(), "updated_at": now_iso(), "created_by": user["username"],
@@ -326,29 +347,6 @@ async def edit_asn(record_id: str, body: AsnEditInput, user: dict = Depends(get_
     return serialize(await db.asn_creation.find_one({"_id": doc["_id"]}))
 
 
-@router.post("/records/{record_id}/pdi")
-async def upload_pdi(record_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    if not ObjectId.is_valid(record_id):
-        raise HTTPException(status_code=400, detail="Invalid ID")
-    doc = await db.asn_creation.find_one({"_id": ObjectId(record_id)})
-    if not doc:
-        raise HTTPException(status_code=404, detail="ASN record not found")
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="PDI must be a PDF file")
-    content = await file.read()
-    if not content.startswith(b"%PDF"):
-        raise HTTPException(status_code=400, detail="Invalid PDF file")
-    fid = uuid.uuid4().hex
-    path = PDI_DIR / f"{fid}.pdf"
-    path.write_bytes(content)
-    update = {"pdi_file_path": str(path), "pdi_file_name": file.filename, "updated_at": now_iso()}
-    if doc["status"] in ("Draft", "Ready"):
-        update["status"] = compute_status({**doc, **update})
-    await db.asn_creation.update_one({"_id": doc["_id"]}, {"$set": update})
-    await log_activity(user["username"], "asn_pdi_uploaded", f"{doc.get('invoice_no')}: {file.filename}", "asn")
-    return {"ok": True, "pdi_file_name": file.filename}
-
-
 @router.get("/stats")
 async def asn_stats(user: dict = Depends(get_current_user)):
     today = datetime.now(timezone.utc).date().isoformat()
@@ -365,59 +363,21 @@ async def asn_stats(user: dict = Depends(get_current_user)):
 
 # ---------- Runs (queue: one ASN at a time) ----------
 
-async def _resolve_documents(ids: list[str]):
-    """Auto-attach required documents from Master Dispatch and split runnable vs blocked ids."""
-    required = await db.document_types.find({"required_for_asn": True, "active": True}).to_list(50)
-    runnable, blocked = [], []
-    for rid in ids:
-        doc = await db.asn_creation.find_one({"_id": ObjectId(rid)})
-        if not doc:
-            continue
-        md = None
-        if ObjectId.is_valid(doc.get("master_dispatch_id", "")):
-            md = await db.master_dispatch.find_one({"_id": ObjectId(doc["master_dispatch_id"])},
-                                                   {"documents": 1})
-        docs_map = {d.get("type"): d for d in (md or {}).get("documents") or []}
-        pdi_doc = docs_map.get("PDI")
-        if pdi_doc and pdi_doc.get("file_path") and os.path.exists(pdi_doc["file_path"]) \
-                and doc.get("pdi_file_path") != pdi_doc["file_path"]:
-            await db.asn_creation.update_one({"_id": doc["_id"]}, {"$set": {
-                "pdi_file_path": pdi_doc["file_path"],
-                "pdi_file_name": f"{pdi_doc.get('report_no', 'PDI')}.pdf", "updated_at": now_iso()}})
-            doc["pdi_file_path"] = pdi_doc["file_path"]
-        missing = []
-        for t in required:
-            entry = docs_map.get(t["key"])
-            has_file = bool(entry and entry.get("file_path") and os.path.exists(entry["file_path"]))
-            if t["key"] == "PDI" and not has_file:
-                has_file = bool(doc.get("pdi_file_path") and os.path.exists(doc["pdi_file_path"]))
-            if not has_file:
-                missing.append(t["label"])
-        if missing:
-            msg = f"Required document(s) missing: {', '.join(missing)}. Generate the PDI in the AI PDI Generator — it attaches to the dispatch automatically."
-            await db.asn_creation.update_one({"_id": doc["_id"]}, {"$set": {
-                "status": "Failed", "error_message": msg, "updated_at": now_iso()}})
-            blocked.append({"invoice_no": doc.get("invoice_no", ""), "missing": missing})
-        else:
-            runnable.append(rid)
-    return runnable, blocked
-
-
 async def _start(background_tasks: BackgroundTasks, ids: list[str], user: str):
     await get_mode()  # blocks in maintenance / emergency stop before scheduling
     if run_state["running"]:
         raise HTTPException(status_code=409, detail="An ASN automation run is already in progress")
     if not ids:
         raise HTTPException(status_code=400, detail="No records to process")
-    runnable, blocked = await _resolve_documents(ids)
+    runnable = [rid for rid in ids
+                if await db.asn_creation.find_one({"_id": ObjectId(rid)}, {"_id": 1})]
     if not runnable:
-        detail = "; ".join(f"{b['invoice_no']}: missing {', '.join(b['missing'])}" for b in blocked) or "No valid records"
-        raise HTTPException(status_code=400, detail=f"ASN blocked — {detail}")
+        raise HTTPException(status_code=400, detail="No valid records to process")
     run_id = str(uuid.uuid4())
     run_state.update({"running": True, "run_id": run_id, "total": len(runnable), "processed": 0,
-                      "current": None, "started_at": now_iso()})
+                      "current": None, "started_at": now_iso(), "phase": "Starting", "awaiting_pdi": None})
     background_tasks.add_task(process_queue, runnable, run_id, user)
-    return {"run_id": run_id, "total": len(runnable), "skipped": blocked}
+    return {"run_id": run_id, "total": len(runnable), "skipped": []}
 
 
 @router.post("/run")
@@ -496,6 +456,28 @@ async def cancel_allocation(body: dict, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
+# ---------- Manual PDI upload wait (worker paused at PDI stage) ----------
+
+@router.post("/pdi-wait/confirm")
+async def confirm_pdi_uploaded(body: dict, user: dict = Depends(get_current_user)):
+    if not pdi_state.get("event") or pdi_state.get("record_id") != body.get("record_id"):
+        raise HTTPException(status_code=409, detail="No ASN run is currently waiting for a PDI upload")
+    pdi_state["cancelled"] = False
+    pdi_state["event"].set()
+    await log_activity(user["username"], "asn_pdi_upload_confirmed", "Resumed after manual PDI upload", "asn")
+    return {"ok": True}
+
+
+@router.post("/pdi-wait/cancel")
+async def cancel_pdi_wait(body: dict, user: dict = Depends(get_current_user)):
+    if not pdi_state.get("event") or pdi_state.get("record_id") != body.get("record_id"):
+        raise HTTPException(status_code=409, detail="No ASN run is currently waiting for a PDI upload")
+    pdi_state["cancelled"] = True
+    pdi_state["event"].set()
+    await log_activity(user["username"], "asn_pdi_wait_cancelled", "ASN not submitted", "asn")
+    return {"ok": True}
+
+
 @router.get("/batch-allocations")
 async def batch_allocations(search: Optional[str] = None, user: dict = Depends(get_current_user)):
     query = {}
@@ -516,7 +498,7 @@ async def asn_export(user: dict = Depends(get_current_user)):
     ws = wb.active
     ws.title = "ASN Creation"
     ws.append(["Dispatch No", "Invoice No", "Invoice Date", "PO Number", "Transporter", "Plant",
-               "Basic Amount", "Total Amount", "Parts", "PDI File", "Status", "ASN Number", "Batch Allocations", "Error"])
+               "Basic Amount", "Total Amount", "Parts", "Status", "ASN Number", "Batch Allocations", "Error"])
     for cell in ws[1]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill(start_color="F97316", end_color="F97316", fill_type="solid")
@@ -525,7 +507,7 @@ async def asn_export(user: dict = Depends(get_current_user)):
                            for a in (d.get("batch_allocations") or []))
         ws.append([d.get("dispatch_no"), d.get("invoice_no"), d.get("invoice_date"), d.get("po_number"),
                    d.get("transporter"), d.get("plant"), d.get("basic_amount"), d.get("total_amount"),
-                   ", ".join(i["part_number"] for i in d.get("items", [])), d.get("pdi_file_name", ""),
+                   ", ".join(i["part_number"] for i in d.get("items", [])),
                    d.get("status"), d.get("asn_number"), allocs, d.get("error_message")])
     buf = io.BytesIO()
     wb.save(buf)

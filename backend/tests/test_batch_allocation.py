@@ -34,20 +34,27 @@ def _wait_run_idle(H, timeout=30):
         rs = requests.get(f"{API}/asn/run-status", headers=H).json()
         if not rs.get("running"):
             return rs
-        # if awaiting a stale allocation, cancel it
+        # if awaiting a stale allocation or PDI wait, cancel it
         aw = rs.get("awaiting_allocation")
         if aw:
             requests.post(f"{API}/asn/allocation/cancel", headers=H, json={"record_id": aw["record_id"]})
+        pw = rs.get("awaiting_pdi")
+        if pw:
+            requests.post(f"{API}/asn/pdi-wait/cancel", headers=H, json={"record_id": pw["record_id"]})
         time.sleep(1)
     raise AssertionError("previous run never finished")
 
 
-def _wait_run_done(H, timeout=60):
+def _wait_run_done(H, timeout=60, auto_confirm_pdi=True):
+    """Waits for run completion, auto-confirming the manual PDI upload pause."""
     start = time.time()
     while time.time() - start < timeout:
         rs = requests.get(f"{API}/asn/run-status", headers=H).json()
         if not rs.get("running"):
             return rs
+        pw = rs.get("awaiting_pdi")
+        if pw and auto_confirm_pdi:
+            requests.post(f"{API}/asn/pdi-wait/confirm", headers=H, json={"record_id": pw["record_id"]})
         time.sleep(1)
     raise AssertionError("run did not finish in time")
 
@@ -92,15 +99,11 @@ def _import_and_prep(H, invoice_no):
     assert recs, f"asn record not created for {invoice_no}"
     rec = recs[0]
     rid = rec["id"]
-    # edit PO/transporter to ensure non-null
+    # edit PO/transporter to ensure non-null — no PDI required anymore
     requests.put(f"{API}/asn/records/{rid}", headers=H, json={
         "po_number": "5540011947", "transporter": "V.R.L. LOGISTICS LIMITED",
         "basic_amount": 100000, "total_amount": 118000,
     })
-    with open(PDI_PATH, "rb") as f:
-        r = requests.post(f"{API}/asn/records/{rid}/pdi", headers=H,
-                          files={"file": ("pdi.pdf", f.read(), "application/pdf")})
-    assert r.status_code == 200, r.text
     rec = requests.get(f"{API}/asn/records", headers=H, params={"search": invoice_no}).json()["items"][0]
     assert rec["status"] == "Ready", f"expected Ready got {rec['status']}"
     return rec
@@ -189,7 +192,7 @@ class TestBatchMultiHappyPath:
         ]}
         r = requests.post(f"{API}/asn/allocation/confirm", headers=H, json=body)
         assert r.status_code == 200, r.text
-        rs = _wait_run_done(H)
+        rs = _wait_run_done(H)  # auto-confirms the PDI-wait pause
         assert rs["processed"] == 1
         rec = _fetch_record(H, TestBatchMultiHappyPath.invoice)
         assert rec["status"] == "Completed", f"got {rec['status']} err={rec.get('error_message')}"
@@ -309,7 +312,7 @@ class TestNonBatchRegression:
         rec = _import_and_prep(H, inv)
         r = requests.post(f"{API}/asn/run", headers=H, json={"ids": [rec["id"]]})
         assert r.status_code == 200, r.text
-        # poll — awaiting_allocation should never be set
+        # poll — awaiting_allocation should never be set; auto-confirm the PDI pause
         start = time.time()
         saw_awaiting = False
         while time.time() - start < 30:
@@ -317,6 +320,9 @@ class TestNonBatchRegression:
             if rs.get("awaiting_allocation"):
                 saw_awaiting = True
                 break
+            pw = rs.get("awaiting_pdi")
+            if pw:
+                requests.post(f"{API}/asn/pdi-wait/confirm", headers=H, json={"record_id": pw["record_id"]})
             if not rs.get("running"):
                 break
             time.sleep(0.5)

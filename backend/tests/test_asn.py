@@ -22,6 +22,20 @@ def H(token):
     return {"Authorization": f"Bearer {token}"}
 
 
+def wait_run_idle(H, timeout=180):
+    """Waits until no ASN run is active (other test modules may share the single-run lock)."""
+    start = time.time()
+    while time.time() - start < timeout:
+        rs = requests.get(f"{API}/asn/run-status", headers=H).json()
+        if not rs.get("running"):
+            return
+        pw = rs.get("awaiting_pdi")
+        if pw:
+            requests.post(f"{API}/asn/pdi-wait/confirm", headers=H, json={"record_id": pw["record_id"]})
+        time.sleep(1)
+    raise AssertionError("another run never finished")
+
+
 def wait_run_done(H, timeout=60):
     start = time.time()
     while time.time() - start < timeout:
@@ -30,6 +44,24 @@ def wait_run_done(H, timeout=60):
             return rs
         time.sleep(1)
     raise AssertionError("Run did not finish in time")
+
+
+def wait_awaiting_pdi(H, timeout=30):
+    """Polls until the worker pauses at the PDI attachment stage."""
+    start = time.time()
+    while time.time() - start < timeout:
+        rs = requests.get(f"{API}/asn/run-status", headers=H).json()
+        if rs.get("awaiting_pdi"):
+            return rs
+        if not rs.get("running"):
+            raise AssertionError(f"run finished before awaiting_pdi appeared: {rs}")
+        time.sleep(0.5)
+    raise AssertionError("awaiting_pdi was never set")
+
+
+def confirm_pdi(H, record_id):
+    r = requests.post(f"{API}/asn/pdi-wait/confirm", headers=H, json={"record_id": record_id})
+    assert r.status_code == 200, r.text
 
 
 def seed_md(H, invoice_no, po=""):
@@ -80,7 +112,7 @@ class TestASNFlow:
         assert r2.status_code == 200
         assert r2.json()["imported"] == 0
 
-    def test_03_happy_path_edit_pdi_run(self, H):
+    def test_03_happy_path_edit_run_with_pdi_pause(self, H):
         inv = f"TEST/9200-{int(time.time())}"
         md = seed_md(H, inv)
         md_id = md.get("id") or md.get("_id")
@@ -92,37 +124,39 @@ class TestASNFlow:
         assert rec["status"] == "Draft", f"expected Draft, got {rec['status']}"
         rid = rec["id"]
 
-        # Edit PO + transporter
+        # Edit PO + transporter — record becomes Ready WITHOUT any PDI
         r = requests.put(f"{API}/asn/records/{rid}", headers=H, json={
             "po_number": "5540011947", "transporter": "V.R.L. LOGISTICS LIMITED",
             "basic_amount": 100000, "total_amount": 118000,
         })
         assert r.status_code == 200, r.text
         assert r.json()["po_number"] == "5540011947"
-        assert r.json()["status"] == "Draft", "should stay Draft until PDI uploaded"
+        assert r.json()["status"] == "Ready", "Ready must not require a PDI anymore"
 
         # PO synced to MD
         md_check = requests.get(f"{API}/master-dispatch/{md_id}", headers=H)
         if md_check.status_code == 200:
             assert md_check.json().get("po_number") == "5540011947"
 
-        # Reject non-PDF PDI
-        r = requests.post(f"{API}/asn/records/{rid}/pdi", headers=H,
-                          files={"file": ("bad.txt", b"not a pdf", "text/plain")})
-        assert r.status_code == 400
-
-        # Upload real PDF
-        with open(PDI_PATH, "rb") as f:
-            r = requests.post(f"{API}/asn/records/{rid}/pdi", headers=H,
-                              files={"file": ("pdi.pdf", f.read(), "application/pdf")})
-        assert r.status_code == 200, r.text
-
-        rec = requests.get(f"{API}/asn/records", headers=H, params={"search": inv}).json()["items"][0]
-        assert rec["status"] == "Ready", f"expected Ready, got {rec['status']}"
-
-        # Run
+        # Run — worker must pause at the PDI attachment stage
+        wait_run_idle(H)
         r = requests.post(f"{API}/asn/run", headers=H, json={"ids": [rid]})
+        if r.status_code == 409:
+            wait_run_idle(H)
+            r = requests.post(f"{API}/asn/run", headers=H, json={"ids": [rid]})
         assert r.status_code == 200, r.text
+        rs = wait_awaiting_pdi(H)
+        aw = rs["awaiting_pdi"]
+        assert aw["record_id"] == rid
+        assert aw["invoice_no"] == inv
+        assert aw.get("timeout_seconds")
+        assert rs.get("phase") == "Waiting for manual PDI upload"
+        rec = requests.get(f"{API}/asn/records", headers=H, params={"search": inv}).json()["items"][0]
+        assert rec["status"] == "Waiting for PDI Upload", rec["status"]
+        assert rec["asn_number"] == "", "ASN must NOT be created while waiting for PDI"
+
+        # User uploads PDI on the portal, then resumes
+        confirm_pdi(H, rid)
         rs = wait_run_done(H)
         assert rs["processed"] == 1
 
@@ -131,7 +165,8 @@ class TestASNFlow:
         assert rec["asn_number"].startswith("ASN"), rec["asn_number"]
         events = {e["event"] for e in rec.get("automation_log", [])}
         for ev in ("Run Started", "PO Selected", "Parts Added", "Invoice Filled",
-                   "Transporter Selected", "PDF Attached", "ASN Created", "ASN Number Captured"):
+                   "Transporter Selected", "PDI Section", "PDI Upload Wait", "PDI Uploaded",
+                   "ASN Created", "ASN Number Captured"):
             assert ev in events, f"missing log event {ev}; got {events}"
         assert "before_submit" in rec.get("screenshots", {})
         assert "after_success" in rec.get("screenshots", {})
@@ -143,26 +178,55 @@ class TestASNFlow:
             assert j.get("asn_number") == rec["asn_number"]
             assert j.get("status") == "ready_for_eway"
 
+    def test_03b_cancel_pdi_wait_does_not_submit(self, H):
+        inv = f"TEST/9250-{int(time.time())}"
+        seed_md(H, inv)
+        requests.post(f"{API}/asn/import", headers=H)
+        rec = requests.get(f"{API}/asn/records", headers=H, params={"search": inv}).json()["items"][0]
+        rid = rec["id"]
+        requests.put(f"{API}/asn/records/{rid}", headers=H, json={
+            "po_number": "5540022222", "transporter": "V.R.L. LOGISTICS LIMITED",
+            "basic_amount": 100000, "total_amount": 118000,
+        })
+        wait_run_idle(H)
+        r = requests.post(f"{API}/asn/run", headers=H, json={"ids": [rid]})
+        if r.status_code == 409:
+            wait_run_idle(H)
+            r = requests.post(f"{API}/asn/run", headers=H, json={"ids": [rid]})
+        assert r.status_code == 200
+        wait_awaiting_pdi(H)
+        r = requests.post(f"{API}/asn/pdi-wait/cancel", headers=H, json={"record_id": rid})
+        assert r.status_code == 200, r.text
+        wait_run_done(H)
+        rec = requests.get(f"{API}/asn/records", headers=H, params={"search": inv}).json()["items"][0]
+        assert rec["status"] == "Failed", rec["status"]
+        assert "cancel" in (rec.get("error_message") or "").lower()
+        assert rec["asn_number"] == "", "ASN must NOT be submitted after cancel"
+        # no pending wait anymore -> 409
+        r = requests.post(f"{API}/asn/pdi-wait/confirm", headers=H, json={"record_id": rid})
+        assert r.status_code == 409
+
     def test_04_failure_and_retry(self, H):
         inv = f"TEST/9300-{int(time.time())}"
         seed_md(H, inv)
         requests.post(f"{API}/asn/import", headers=H)
         rec = requests.get(f"{API}/asn/records", headers=H, params={"search": inv}).json()["items"][0]
         rid = rec["id"]
-        # PO contains NOPO -> simulate dropdown mismatch
+        # PO contains NOPO -> simulate dropdown mismatch (fails before the PDI stage)
         r = requests.put(f"{API}/asn/records/{rid}", headers=H, json={
             "po_number": "NOPO123", "transporter": "V.R.L. LOGISTICS LIMITED",
             "basic_amount": 100000, "total_amount": 118000,
         })
         assert r.status_code == 200
-        with open(PDI_PATH, "rb") as f:
-            requests.post(f"{API}/asn/records/{rid}/pdi", headers=H,
-                          files={"file": ("pdi.pdf", f.read(), "application/pdf")})
         rec = requests.get(f"{API}/asn/records", headers=H, params={"search": inv}).json()["items"][0]
         assert rec["status"] == "Ready"
 
         # Run - expect failure
+        wait_run_idle(H)
         r = requests.post(f"{API}/asn/run", headers=H, json={"ids": [rid]})
+        if r.status_code == 409:
+            wait_run_idle(H)
+            r = requests.post(f"{API}/asn/run", headers=H, json={"ids": [rid]})
         assert r.status_code == 200
         wait_run_done(H)
         rec = requests.get(f"{API}/asn/records", headers=H, params={"search": inv}).json()["items"][0]
@@ -170,14 +234,20 @@ class TestASNFlow:
         assert "not found" in (rec.get("error_message") or "").lower() or "dropdown" in (rec.get("error_message") or "").lower()
         assert "after_failure" in rec.get("screenshots", {})
 
-        # Fix PO and retry via /run
+        # Fix PO and retry via /run — now pauses at PDI stage
         r = requests.put(f"{API}/asn/records/{rid}", headers=H, json={
             "po_number": "5540099999", "transporter": "V.R.L. LOGISTICS LIMITED",
             "basic_amount": 100000, "total_amount": 118000,
         })
         assert r.status_code == 200
+        wait_run_idle(H)
         r = requests.post(f"{API}/asn/run", headers=H, json={"ids": [rid]})
+        if r.status_code == 409:
+            wait_run_idle(H)
+            r = requests.post(f"{API}/asn/run", headers=H, json={"ids": [rid]})
         assert r.status_code == 200
+        wait_awaiting_pdi(H)
+        confirm_pdi(H, rid)
         wait_run_done(H)
         rec = requests.get(f"{API}/asn/records", headers=H, params={"search": inv}).json()["items"][0]
         assert rec["status"] == "Completed", f"expected Completed got {rec['status']} err={rec.get('error_message')}"
@@ -194,15 +264,14 @@ class TestASNFlow:
             "po_number": "5540088888", "transporter": "V.R.L. LOGISTICS LIMITED",
             "basic_amount": 100000, "total_amount": 118000,
         })
-        with open(PDI_PATH, "rb") as f:
-            requests.post(f"{API}/asn/records/{rid}/pdi", headers=H,
-                          files={"file": ("pdi.pdf", f.read(), "application/pdf")})
         r1 = requests.post(f"{API}/asn/run", headers=H, json={"ids": [rid]})
         assert r1.status_code == 200
         # immediately fire another
         r2 = requests.post(f"{API}/asn/run-ready", headers=H)
         # either 409 (in progress) or 400 (no records if the one Ready is now Processing)
         assert r2.status_code in (400, 409), f"expected 409/400, got {r2.status_code} {r2.text}"
+        wait_awaiting_pdi(H)
+        confirm_pdi(H, rid)
         wait_run_done(H)
 
     def test_06_export_xlsx(self, H):

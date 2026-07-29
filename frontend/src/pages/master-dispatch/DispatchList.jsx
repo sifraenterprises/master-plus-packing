@@ -14,7 +14,6 @@ import { useAuth } from "@/context/AuthContext";
 import MDForm, { STATUS_OPTIONS, normalizeMD, formatEway } from "@/components/md/MDForm";
 import MDRecordsTable, { STATUS_LABELS, STATUS_STYLES } from "@/components/md/MDRecordsTable";
 import MDStats from "@/components/md/MDStats";
-import PdiPanel from "@/components/md/PdiPanel";
 
 export default function DispatchList() {
   const { user } = useAuth();
@@ -28,7 +27,6 @@ export default function DispatchList() {
   const [viewRec, setViewRec] = useState(null);
   const [editRec, setEditRec] = useState(null);
   const [deleteRec, setDeleteRec] = useState(null);
-  const [pdiRec, setPdiRec] = useState(null);
   const [saving, setSaving] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -167,7 +165,6 @@ export default function DispatchList() {
       <MDRecordsTable
         records={records} sort={sort} onSort={toggleSort} isAdmin={isAdmin}
         onView={setViewRec} onEdit={setEditRec} onDuplicate={duplicate} onDelete={setDeleteRec}
-        onPdi={setPdiRec}
       />
 
       <div className="flex items-center justify-between flex-wrap gap-3" data-testid="md-list-pagination">
@@ -260,17 +257,6 @@ export default function DispatchList() {
           </div>
         </DialogContent>
       </Dialog>
-
-      {pdiRec && (
-        <PdiPanel record={pdiRec} onClose={() => setPdiRec(null)}
-                  onChanged={async () => {
-                    await load(page);
-                    try {
-                      const { data } = await api.get(`/master-dispatch/${pdiRec.id}`);
-                      setPdiRec(data);
-                    } catch { setPdiRec(null); }
-                  }} />
-      )}
 
       <AlertDialog open={!!deleteRec} onOpenChange={(o) => !o && setDeleteRec(null)}>
         <AlertDialogContent className="bg-card border-border" data-testid="md-delete-dialog">

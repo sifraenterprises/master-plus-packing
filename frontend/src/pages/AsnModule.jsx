@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Truck, DownloadSimple, Play, ArrowsClockwise, ArrowsCounterClockwise, FileXls, PencilSimple, Paperclip, ListMagnifyingGlass, MagnifyingGlass } from "@phosphor-icons/react";
+import { Truck, DownloadSimple, Play, ArrowsClockwise, ArrowsCounterClockwise, FileXls, PencilSimple, ListMagnifyingGlass, MagnifyingGlass, PauseCircle } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ const STATUS_CLS = {
   Ready: "border-sky-500/50 text-sky-400",
   Processing: "border-amber-500/50 text-amber-400",
   "Awaiting Allocation": "border-orange-500/60 text-orange-400",
+  "Waiting for PDI Upload": "border-purple-500/60 text-purple-400",
   Completed: "border-emerald-500/50 text-emerald-400",
   Failed: "border-red-500/50 text-red-400",
 };
@@ -40,9 +41,9 @@ export default function AsnModule() {
   const [saving, setSaving] = useState(false);
   const [allocReq, setAllocReq] = useState(null);
   const [allocHistory, setAllocHistory] = useState(false);
+  const [pdiReq, setPdiReq] = useState(null);
+  const [resuming, setResuming] = useState(false);
   const pollRef = useRef(null);
-  const pdiRef = useRef(null);
-  const pdiTarget = useRef(null);
 
   const load = useCallback(async (f = filters) => {
     try {
@@ -78,10 +79,12 @@ export default function AsnModule() {
           if (prev && prev.record_id === next.record_id && prev.part_number === next.part_number) return prev;
           return next;
         });
+        setPdiReq(data.awaiting_pdi || null);
         if (!data.running) {
           clearInterval(pollRef.current);
           setRunning(false);
           setAllocReq(null);
+          setPdiReq(null);
           load();
           toast.success("ASN automation queue finished");
         }
@@ -134,13 +137,20 @@ export default function AsnModule() {
     if (d) { setEditRec(null); load(); }
   };
 
-  const uploadPdi = async (file) => {
-    if (!file || !pdiTarget.current) return;
-    const fd = new FormData();
-    fd.append("file", file);
-    const d = await call("post", `/asn/records/${pdiTarget.current.id}/pdi`, fd, `PDI attached: ${file.name}`);
-    if (d) load();
-    if (pdiRef.current) pdiRef.current.value = "";
+  const uploadPdiConfirm = async () => {
+    if (!pdiReq) return;
+    setResuming(true);
+    const d = await call("post", "/asn/pdi-wait/confirm", { record_id: pdiReq.record_id },
+      "Resuming — worker is clicking Create ASN…");
+    setResuming(false);
+    if (d) setPdiReq(null);
+  };
+
+  const cancelPdiWait = async () => {
+    if (!pdiReq) return;
+    const d = await call("post", "/asn/pdi-wait/cancel", { record_id: pdiReq.record_id },
+      "Run cancelled — ASN was NOT submitted");
+    if (d) setPdiReq(null);
   };
 
   const exportExcel = async () => {
@@ -159,10 +169,12 @@ export default function AsnModule() {
 
   const transporterOptions = editRec?.transporter && !transporters.includes(editRec.transporter)
     ? [editRec.transporter, ...transporters] : transporters;
+  const pdiSecsLeft = pdiReq
+    ? Math.max(0, Math.floor((pdiReq.timeout_seconds || 900) - (Date.now() - Date.parse(pdiReq.requested_at)) / 1000))
+    : 0;
 
   return (
     <div className="max-w-7xl space-y-6" data-testid="asn-page">
-      <input ref={pdiRef} type="file" accept=".pdf" className="hidden" data-testid="asn-pdi-input" onChange={(e) => uploadPdi(e.target.files?.[0])} />
       <div>
         <p className="text-xs uppercase tracking-[0.3em] text-primary mb-2">Automation Module</p>
         <h1 className="text-3xl font-black tracking-tight flex items-center gap-3">
@@ -204,7 +216,7 @@ export default function AsnModule() {
         <div className="flex-1" />
         <select value={filters.status} onChange={(e) => { const f = { ...filters, status: e.target.value }; setFilters(f); load(f); }}
                 data-testid="asn-filter-status" className="h-9 rounded-sm bg-input border border-border text-xs px-2 focus:outline-none">
-          {["All", "Draft", "Ready", "Processing", "Awaiting Allocation", "Completed", "Failed"].map((s) => <option key={s}>{s}</option>)}
+          {["All", "Draft", "Ready", "Processing", "Awaiting Allocation", "Waiting for PDI Upload", "Completed", "Failed"].map((s) => <option key={s}>{s}</option>)}
         </select>
         <div className="relative">
           <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -217,7 +229,31 @@ export default function AsnModule() {
       {running && runInfo && (
         <div className="border border-primary/40 bg-card rounded-sm px-4 py-2.5 text-xs font-mono text-primary" data-testid="asn-run-progress">
           Queue running (one ASN at a time)… {runInfo.processed}/{runInfo.total} done{runInfo.current ? ` — current: ${runInfo.current}` : ""}
+          {runInfo.phase ? ` — ${runInfo.phase}` : ""}
           {allocReq ? " — ⏸ paused: batch allocation required" : ""}
+        </div>
+      )}
+
+      {pdiReq && (
+        <div className="border-2 border-purple-500/60 bg-card rounded-sm p-4 space-y-3" data-testid="asn-pdi-wait-card">
+          <p className="text-sm font-black text-purple-400 flex items-center gap-2">
+            <PauseCircle size={20} weight="fill" /> Waiting for manual PDI upload — <span className="font-mono">{pdiReq.invoice_no}</span>
+          </p>
+          <p className="text-xs text-muted-foreground">
+            All ASN details are filled. The worker is paused at the PDI attachment stage and the portal browser session stays open —
+            upload the AI-generated PDI PDF <b>directly on the TAFE portal</b>, then click Continue below. The ASN will <b>not</b> be submitted without your confirmation.
+          </p>
+          <p className={`text-xs font-mono ${pdiSecsLeft < 300 ? "text-red-400 font-bold" : "text-muted-foreground"}`} data-testid="asn-pdi-wait-timer">
+            {pdiSecsLeft < 300 ? "⚠ " : ""}Time remaining: {Math.floor(pdiSecsLeft / 60)}m {pdiSecsLeft % 60}s — on timeout the run fails safely (nothing is submitted).
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={uploadPdiConfirm} disabled={resuming} data-testid="asn-pdi-resume-btn" className="rounded-sm gap-1.5 bg-purple-600 hover:bg-purple-500 text-white">
+              <Play size={14} weight="fill" /> {resuming ? "Resuming…" : "Resume after PDI upload — Create ASN"}
+            </Button>
+            <Button variant="secondary" onClick={cancelPdiWait} data-testid="asn-pdi-cancel-btn" className="rounded-sm text-red-400">
+              Cancel run (do not submit)
+            </Button>
+          </div>
         </div>
       )}
 
@@ -225,7 +261,7 @@ export default function AsnModule() {
         <Table data-testid="asn-table">
           <TableHeader>
             <TableRow className="hover:bg-transparent border-border">
-              {["Invoice Number", "Invoice Date", "PO Number", "Transporter", "Parts", "PDI", "Status", "ASN Number", "Action"].map((h) => (
+              {["Invoice Number", "Invoice Date", "PO Number", "Transporter", "Parts", "Status", "ASN Number", "Action"].map((h) => (
                 <TableHead key={h} className="text-[10px] uppercase tracking-[0.15em] whitespace-nowrap">{h}</TableHead>
               ))}
             </TableRow>
@@ -233,7 +269,7 @@ export default function AsnModule() {
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground py-10" data-testid="asn-no-records">
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-10" data-testid="asn-no-records">
                   No ASN records — click "Import From Master Dispatch" to load pending dispatches.
                 </TableCell>
               </TableRow>
@@ -245,9 +281,6 @@ export default function AsnModule() {
                   <TableCell className="font-mono text-xs whitespace-nowrap">{r.po_number || <span className="text-amber-400">add PO</span>}</TableCell>
                   <TableCell className="text-xs max-w-[150px] truncate">{r.transporter || "—"}</TableCell>
                   <TableCell className="text-center text-xs">{r.items?.length || 0}</TableCell>
-                  <TableCell className="text-xs max-w-[110px] truncate">
-                    {r.pdi_file_name ? <span className="text-emerald-400">{r.pdi_file_name}</span> : <span className="text-amber-400">not attached</span>}
-                  </TableCell>
                   <TableCell>
                     <Badge variant="outline" className={`rounded-sm text-[9px] uppercase ${STATUS_CLS[r.status] || ""}`}>{r.status}</Badge>
                   </TableCell>
@@ -258,9 +291,6 @@ export default function AsnModule() {
                         <>
                           <button onClick={() => setEditRec({ ...r })} className="p-1.5 text-muted-foreground hover:text-primary transition-colors" data-testid={`asn-edit-${r.invoice_no}`} aria-label="Edit PO / details">
                             <PencilSimple size={16} />
-                          </button>
-                          <button onClick={() => { pdiTarget.current = r; pdiRef.current?.click(); }} className="p-1.5 text-muted-foreground hover:text-primary transition-colors" data-testid={`asn-pdi-${r.invoice_no}`} aria-label="Attach PDI">
-                            <Paperclip size={16} />
                           </button>
                           <button onClick={() => runOne(r)} disabled={running} className="p-1.5 text-muted-foreground hover:text-emerald-400 transition-colors disabled:opacity-40" data-testid={`asn-run-${r.invoice_no}`} aria-label="Run">
                             <Play size={16} />
@@ -344,3 +374,4 @@ export default function AsnModule() {
     </div>
   );
 }
+
