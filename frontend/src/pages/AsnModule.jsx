@@ -79,7 +79,11 @@ export default function AsnModule() {
           if (prev && prev.record_id === next.record_id && prev.part_number === next.part_number) return prev;
           return next;
         });
-        setPdiReq(data.awaiting_pdi || null);
+        setPdiReq((prev) => {
+          const next = data.awaiting_pdi || null;
+          if (!!prev !== !!next) load();
+          return next;
+        });
         if (!data.running) {
           clearInterval(pollRef.current);
           setRunning(false);
