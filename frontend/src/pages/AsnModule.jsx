@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Truck, DownloadSimple, Play, ArrowsClockwise, ArrowsCounterClockwise, FileXls, PencilSimple, ListMagnifyingGlass, MagnifyingGlass, PauseCircle } from "@phosphor-icons/react";
+import { Truck, DownloadSimple, Play, ArrowsClockwise, ArrowsCounterClockwise, FileXls, PencilSimple, ListMagnifyingGlass, MagnifyingGlass, PauseCircle, Trash } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -139,6 +139,12 @@ export default function AsnModule() {
     }, "ASN record updated");
     setSaving(false);
     if (d) { setEditRec(null); load(); }
+  };
+
+  const deleteRecord = async (r) => {
+    if (!window.confirm(`Delete ASN entry for ${r.invoice_no}?`)) return;
+    const d = await call("delete", `/asn/records/${r.id}`, undefined, "ASN entry deleted");
+    if (d) load();
   };
 
   const uploadPdiConfirm = async () => {
@@ -304,6 +310,11 @@ export default function AsnModule() {
                       <button onClick={() => setLogView(r)} className="p-1.5 text-muted-foreground hover:text-primary transition-colors" data-testid={`asn-log-${r.invoice_no}`} aria-label="View log">
                         <ListMagnifyingGlass size={16} />
                       </button>
+                      {r.status !== "Processing" && r.status !== "Completed" && (
+                        <button onClick={() => deleteRecord(r)} className="p-1.5 text-muted-foreground hover:text-red-400 transition-colors" data-testid={`asn-delete-${r.invoice_no}`} aria-label="Delete ASN entry">
+                          <Trash size={16} />
+                        </button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

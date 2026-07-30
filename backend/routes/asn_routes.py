@@ -347,6 +347,22 @@ async def edit_asn(record_id: str, body: AsnEditInput, user: dict = Depends(get_
     return serialize(await db.asn_creation.find_one({"_id": doc["_id"]}))
 
 
+@router.delete("/records/{record_id}")
+async def delete_asn(record_id: str, user: dict = Depends(get_current_user)):
+    if not ObjectId.is_valid(record_id):
+        raise HTTPException(status_code=400, detail="Invalid ID")
+    oid = ObjectId(record_id)
+    doc = await db.asn_creation.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="ASN record not found")
+    if doc.get("status") in ("Processing", "Completed"):
+        raise HTTPException(status_code=400, detail=f"Cannot delete a {doc['status']} record")
+    await db.asn_creation.delete_one({"_id": oid})
+    await db.asn_batch_allocations.delete_many({"asn_record_id": record_id})
+    await log_activity(user["username"], "asn_deleted", f"{doc.get('invoice_no', record_id)}", "asn")
+    return {"deleted": True, "id": record_id}
+
+
 @router.get("/stats")
 async def asn_stats(user: dict = Depends(get_current_user)):
     today = datetime.now(timezone.utc).date().isoformat()
