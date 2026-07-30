@@ -29,6 +29,7 @@ run_state = {"running": False, "run_id": None, "module": None, "total": 0, "proc
 
 class RunRequest(BaseModel):
     ids: list[str] = []
+    stop_before_submit: bool = False
 
 
 class ModeRequest(BaseModel):
@@ -141,7 +142,7 @@ async def set_submission(record_id: str, fields: dict, inc: dict = None):
     await db.eway_submissions.update_one({"record_id": record_id}, update, upsert=True)
 
 
-async def process_batch(ids: list[str], run_id: str, user: str, force_mode: str = None):
+async def process_batch(ids: list[str], run_id: str, user: str, force_mode: str = None, stop_before_submit: bool = False):
     mode = force_mode or await get_mode()
     headless = os.environ.get("AUTOMATION_HEADLESS", "true").lower() == "true"
     log = make_logger(run_id, "eway")
@@ -211,7 +212,7 @@ async def process_batch(ids: list[str], run_id: str, user: str, force_mode: str 
         run_state["running"] = False
 
 
-async def start_run(background_tasks: BackgroundTasks, ids: list[str], user: str):
+async def start_run(background_tasks: BackgroundTasks, ids: list[str], user: str, stop_before_submit: bool = False):
     await get_mode()  # blocks in maintenance / emergency stop before scheduling
     if run_state["running"]:
         raise HTTPException(status_code=409, detail="An automation run is already in progress")
@@ -220,7 +221,7 @@ async def start_run(background_tasks: BackgroundTasks, ids: list[str], user: str
     run_id = str(uuid.uuid4())
     run_state.update({"running": True, "run_id": run_id, "module": "eway",
                       "total": len(ids), "processed": 0, "started_at": now_iso()})
-    background_tasks.add_task(process_batch, ids, run_id, user)
+    background_tasks.add_task(process_batch, ids, run_id, user, None, stop_before_submit)
     return {"run_id": run_id, "total": len(ids), "module": "eway"}
 
 
@@ -277,7 +278,7 @@ async def eway_stats(user: dict = Depends(get_current_user)):
 
 @router.post("/run")
 async def eway_run(req: RunRequest, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
-    result = await start_run(background_tasks, req.ids, user["username"])
+    result = await start_run(background_tasks, req.ids, user["username"], req.stop_before_submit)
     await log_activity(user["username"], "eway_run", f"{len(req.ids)} record(s)", "eway")
     return result
 

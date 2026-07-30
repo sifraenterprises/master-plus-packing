@@ -35,6 +35,7 @@ pdi_state = {"event": None, "record_id": None, "cancelled": False}
 
 class RunRequest(BaseModel):
     ids: list[str] = []
+    stop_before_submit: bool = False
 
 
 class AsnEditInput(BaseModel):
@@ -77,7 +78,7 @@ async def append_log(oid, run_id, event, message, level="INFO"):
                                          "event": event, "message": message, "level": level, "timestamp": now_iso()})
 
 
-async def process_queue(ids: list[str], run_id: str, user: str):
+async def process_queue(ids: list[str], run_id: str, user: str, stop_before_submit: bool = False):
     """Queue processing: one ASN at a time on a single browser session."""
     mode = await get_mode()
     headless = os.environ.get("AUTOMATION_HEADLESS", "true").lower() == "true"
@@ -379,7 +380,7 @@ async def asn_stats(user: dict = Depends(get_current_user)):
 
 # ---------- Runs (queue: one ASN at a time) ----------
 
-async def _start(background_tasks: BackgroundTasks, ids: list[str], user: str):
+async def _start(background_tasks: BackgroundTasks, ids: list[str], user: str, stop_before_submit: bool = False):
     await get_mode()  # blocks in maintenance / emergency stop before scheduling
     if run_state["running"]:
         raise HTTPException(status_code=409, detail="An ASN automation run is already in progress")
@@ -392,30 +393,30 @@ async def _start(background_tasks: BackgroundTasks, ids: list[str], user: str):
     run_id = str(uuid.uuid4())
     run_state.update({"running": True, "run_id": run_id, "total": len(runnable), "processed": 0,
                       "current": None, "started_at": now_iso(), "phase": "Starting", "awaiting_pdi": None})
-    background_tasks.add_task(process_queue, runnable, run_id, user)
+    background_tasks.add_task(process_queue, runnable, run_id, user, stop_before_submit)
     return {"run_id": run_id, "total": len(runnable), "skipped": []}
 
 
 @router.post("/run")
 async def asn_run(req: RunRequest, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     ids = [i for i in req.ids if ObjectId.is_valid(i)]
-    result = await _start(background_tasks, ids, user["username"])
+    result = await _start(background_tasks, ids, user["username"], req.stop_before_submit)
     await log_activity(user["username"], "asn_run", f"{len(ids)} record(s)", "asn")
     return result
 
 
 @router.post("/run-ready")
-async def asn_run_ready(background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
+async def asn_run_ready(req: RunRequest = None, background_tasks: BackgroundTasks = None, user: dict = Depends(get_current_user)):
     ids = [str(d["_id"]) async for d in db.asn_creation.find({"status": "Ready", **(await env_list_filter())}, {"_id": 1})]
-    result = await _start(background_tasks, ids, user["username"])
+    result = await _start(background_tasks, ids, user["username"], bool(req and req.stop_before_submit))
     await log_activity(user["username"], "asn_run_ready", f"{len(ids)} record(s)", "asn")
     return result
 
 
 @router.post("/retry-failed")
-async def asn_retry_failed(background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
+async def asn_retry_failed(req: RunRequest = None, background_tasks: BackgroundTasks = None, user: dict = Depends(get_current_user)):
     ids = [str(d["_id"]) async for d in db.asn_creation.find({"status": "Failed", **(await env_list_filter())}, {"_id": 1})]
-    result = await _start(background_tasks, ids, user["username"])
+    result = await _start(background_tasks, ids, user["username"], bool(req and req.stop_before_submit))
     await log_activity(user["username"], "asn_retry_failed", f"{len(ids)} record(s)", "asn")
     return result
 

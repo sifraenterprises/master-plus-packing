@@ -33,6 +33,7 @@ class AckRunRequest(BaseModel):
     company_code: str = "TMTL"
     transporter: str = ""
     plant: str = ""
+    stop_before_submit: bool = False
 
 
 def now_iso():

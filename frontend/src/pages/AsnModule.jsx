@@ -43,6 +43,7 @@ export default function AsnModule() {
   const [allocHistory, setAllocHistory] = useState(false);
   const [pdiReq, setPdiReq] = useState(null);
   const [resuming, setResuming] = useState(false);
+  const [stopBeforeSubmit, setStopBeforeSubmit] = useState(false);
   const pollRef = useRef(null);
 
   const load = useCallback(async (f = filters) => {
@@ -117,17 +118,17 @@ export default function AsnModule() {
   };
 
   const runReady = async () => {
-    const d = await call("post", "/asn/run-ready", {}, (d) => `Queue started: ${d.total} record(s) (one at a time)`);
+    const d = await call("post", "/asn/run-ready", { stop_before_submit: stopBeforeSubmit }, (d) => `Queue started: ${d.total} record(s) (one at a time)`);
     if (d) { load(); startPoll(); }
   };
 
   const retryFailed = async () => {
-    const d = await call("post", "/asn/retry-failed", {}, (d) => `Retrying ${d.total} failed record(s)`);
+    const d = await call("post", "/asn/retry-failed", { stop_before_submit: stopBeforeSubmit }, (d) => `Retrying ${d.total} failed record(s)`);
     if (d) { load(); startPoll(); }
   };
 
   const runOne = async (r) => {
-    const d = await call("post", "/asn/run", { ids: [r.id] }, `Creating ASN for ${r.invoice_no}…`);
+    const d = await call("post", "/asn/run", { ids: [r.id], stop_before_submit: stopBeforeSubmit }, `Creating ASN for ${r.invoice_no}…`);
     if (d) { load(); startPoll(); }
   };
 
@@ -205,6 +206,9 @@ export default function AsnModule() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2 h-9 px-3 rounded-sm border border-amber-500/60 text-xs text-amber-300 cursor-pointer" data-testid="asn-stop-before-submit">
+          <input type="checkbox" checked={stopBeforeSubmit} onChange={(e) => setStopBeforeSubmit(e.target.checked)} /> Stop before submit
+        </label>
         <Button onClick={importMD} data-testid="asn-import" className="rounded-sm gap-2 active:scale-95 transition-transform">
           <DownloadSimple size={16} weight="bold" /> Import From Master Dispatch
         </Button>

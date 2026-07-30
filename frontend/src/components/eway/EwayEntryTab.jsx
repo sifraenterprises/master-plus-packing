@@ -40,6 +40,7 @@ export default function EwayEntryTab() {
   const [logs, setLogs] = useState([]);
   const [selected, setSelected] = useState([]);
   const [running, setRunning] = useState(false);
+  const [stopBeforeSubmit, setStopBeforeSubmit] = useState(false);
   const [runInfo, setRunInfo] = useState(null);
   const [settings, setSettings] = useState({ mode: "test" });
   const [confirmLive, setConfirmLive] = useState(false);
@@ -98,7 +99,7 @@ export default function EwayEntryTab() {
 
   const startRun = async (endpoint, body) => {
     try {
-      const res = await api.post(endpoint, body || {});
+      const res = await api.post(endpoint, { ...(body || {}), stop_before_submit: stopBeforeSubmit });
       setRunning(true);
       setRunInfo({ running: true, total: res.data.total, processed: 0 });
       toast.info(`Run started: ${res.data.total} record(s)`);
@@ -232,6 +233,9 @@ export default function EwayEntryTab() {
         </div>
         <Input placeholder="Dispatch No" value={filters.dispatch} onChange={(e) => applyFilter("dispatch", e.target.value)} data-testid="eway-filter-dispatch" className="h-9 w-36 rounded-sm bg-input border-border text-xs" />
         <div className="flex-1" />
+        <label className="flex items-center gap-2 h-9 px-3 rounded-sm border border-amber-500/60 text-xs text-amber-300 cursor-pointer" data-testid="eway-stop-before-submit">
+          <input type="checkbox" checked={stopBeforeSubmit} onChange={(e) => setStopBeforeSubmit(e.target.checked)} /> Stop before submit
+        </label>
         <Button size="sm" onClick={() => startRun("/eway/run", { ids: selected })} disabled={running || selected.length === 0} data-testid="eway-run-selected" className="rounded-sm gap-1 h-9">
           <Play size={14} weight="bold" /> Run Selected ({selected.length})
         </Button>

@@ -35,6 +35,7 @@ export default function VendorAckModule() {
   const [selectedId, setSelectedId] = useState("");
   const [panel, setPanel] = useState(null);
   const [running, setRunning] = useState(false);
+  const [stopBeforeSubmit, setStopBeforeSubmit] = useState(false);
   const [logView, setLogView] = useState(null);
   const [shotView, setShotView] = useState(null);
   const [shotUrls, setShotUrls] = useState({});
@@ -97,6 +98,7 @@ export default function VendorAckModule() {
       await api.post("/vendor-ack/run", {
         dispatch_id: panel.dispatch_id, company_code: panel.company_code,
         transporter: panel.transporter, plant: panel.plant,
+        stop_before_submit: stopBeforeSubmit,
       });
       toast.info(`Automation started for ${panel.dispatch_no}`);
       load();
@@ -111,7 +113,7 @@ export default function VendorAckModule() {
     if (!r.ack) return;
     setRunning(true);
     try {
-      await api.post(`/vendor-ack/retry/${r.ack.id}`);
+      await api.post(`/vendor-ack/retry/${r.ack.id}`, { stop_before_submit: stopBeforeSubmit });
       toast.info(`Retrying ${r.dispatch_no}…`);
       load();
       startPoll();
@@ -217,6 +219,9 @@ export default function VendorAckModule() {
           </p>
         )}
         <div className="flex gap-2">
+          <label className="flex items-center gap-2 h-9 px-3 rounded-sm border border-amber-500/60 text-xs text-amber-300 cursor-pointer" data-testid="vack-stop-before-submit">
+            <input type="checkbox" checked={stopBeforeSubmit} onChange={(e) => setStopBeforeSubmit(e.target.checked)} /> Stop before submit
+          </label>
           <Button onClick={startAutomation} disabled={!canStart} data-testid="vack-start-automation" className="rounded-sm gap-2 active:scale-95 transition-transform">
             <Play size={16} weight="bold" /> {running ? "Automation Running…" : "Start Automation"}
           </Button>
