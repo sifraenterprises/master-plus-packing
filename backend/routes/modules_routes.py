@@ -11,6 +11,7 @@ SEED_MODULES = [
     {"key": "eway-bill", "name": "E-Way Bill Automation", "description": "Uploads E-Way Bill numbers from Master Dispatch invoices to the TAFE Vendor Portal — batch runs, retries, test/live modes.", "status": "active", "enabled": True, "icon": "Receipt"},
     {"key": "vendor-ack", "name": "Vendor Acknowledgement", "description": "Automated vendor acknowledgement processing and confirmation tracking.", "status": "active", "enabled": True, "icon": "Handshake"},
     {"key": "pdi", "name": "AI PDI Generator", "description": "AI-generated Final / Pre-Dispatch Inspection reports — realistic handwritten observations, always within tolerance.", "status": "active", "enabled": True, "icon": "SealCheck"},
+    {"key": "print-eway-bill", "name": "Print E-Way Bill", "description": "Print and download E-Way Bills from the government portal.", "status": "active", "enabled": True, "icon": "Receipt"},
 ]
 
 
@@ -19,8 +20,7 @@ async def seed_modules():
     for mod in SEED_MODULES:
         await db.modules.update_one({"key": mod["key"]}, {"$setOnInsert": mod}, upsert=True)
     for mod in SEED_MODULES:
-        if mod["key"] in ("packing", "eway-bill", "pdi"):
-            await db.modules.update_one({"key": mod["key"]}, {"$set": mod})
+        await db.modules.update_one({"key": mod["key"]}, {"$set": {"status": "active", "enabled": True, "name": mod["name"], "description": mod["description"], "icon": mod["icon"]}})
 
 
 @router.get("")

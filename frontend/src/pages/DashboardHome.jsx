@@ -112,8 +112,8 @@ export default function DashboardHome() {
             icon={MODULE_ICONS[m.icon] || Package}
             title={m.name}
             description={m.description}
-            badge={m.status === "active" ? "Active" : "Coming Soon"}
-            badgeVariant={m.status === "active" ? "default" : "secondary"}
+            badge="Active"
+            badgeVariant="default"
             testId={`card-module-${m.key}`}
             delay={i + 1}
           />
