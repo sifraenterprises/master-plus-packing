@@ -20,6 +20,7 @@ router = APIRouter(prefix="/worker", tags=["desktop-worker"])
 JOB_TYPES = {
     "portal_validation",
     "asn_creation",
+    "dqms_start_batch",
     "eway_bill_entry",
     "print_eway_bill",
     "vendor_eway_acknowledgement",
@@ -187,6 +188,25 @@ async def sync_source_record(job: dict, *, success: bool, result: dict | None = 
             fields.update({"ack_date": ist.strftime("%Y-%m-%d"),
                            "ack_time": ist.strftime("%H:%M:%S")})
         await db.vendor_eway_acknowledgement.update_one(
+            {"_id": source_oid, **owned}, {"$set": fields},
+        )
+        return
+
+    if job_type == "dqms_start_batch":
+        fields = {
+            "status": (
+                "Ready for Review"
+                if success and (output.get("dry_run") or output.get("stopped_before_create"))
+                else ("Completed" if success else "Failed")
+            ),
+            "error_message": "" if success else error,
+            "result": output,
+            "updated_at": timestamp,
+        }
+        if success:
+            fields["completed_at"] = timestamp
+            fields["batch_number"] = output.get("batch_number", "")
+        await db.dqms_batches.update_one(
             {"_id": source_oid, **owned}, {"$set": fields},
         )
 

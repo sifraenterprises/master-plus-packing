@@ -19,6 +19,7 @@ import VendorAckModule from "@/pages/VendorAckModule";
 import AsnModule from "@/pages/AsnModule";
 import PdiModule from "@/pages/PdiModule";
 import PrintEwayModule from "@/pages/PrintEwayModule";
+import DqmsModule from "@/pages/DqmsModule";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
 
@@ -68,6 +69,7 @@ function App() {
             <Route path="modules/asn" element={<AsnModule />} />
             <Route path="modules/pdi" element={<PdiModule />} />
             <Route path="modules/print-eway" element={<PrintEwayModule />} />
+            <Route path="modules/dqms" element={<DqmsModule />} />
             <Route path="modules/:moduleKey" element={<ModulePlaceholder />} />
             <Route
               path="settings"

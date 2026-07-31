@@ -12,11 +12,11 @@ SEED_MODULES = [
     {"key": "vendor-ack", "name": "Vendor Acknowledgement", "description": "Automated vendor acknowledgement processing and confirmation tracking.", "status": "active", "enabled": True, "icon": "Handshake"},
     {"key": "pdi", "name": "AI PDI Generator", "description": "AI-generated Final / Pre-Dispatch Inspection reports — realistic handwritten observations, always within tolerance.", "status": "active", "enabled": True, "icon": "SealCheck"},
     {"key": "print-eway-bill", "name": "Print E-Way Bill", "description": "Print and download E-Way Bills from the government portal.", "status": "active", "enabled": True, "icon": "Receipt"},
+    {"key": "dqms", "name": "TMTL DQMS Automation", "description": "Queue and monitor BlueStacks DQMS batch creation through the single desktop worker.", "status": "active", "enabled": True, "icon": "Checks"},
 ]
 
 
 async def seed_modules():
-    await db.modules.delete_one({"key": "dqms"})
     for mod in SEED_MODULES:
         await db.modules.update_one({"key": mod["key"]}, {"$setOnInsert": mod}, upsert=True)
     for mod in SEED_MODULES:
