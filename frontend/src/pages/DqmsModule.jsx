@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Checks, Play, ArrowsClockwise, ShieldCheck } from "@phosphor-icons/react";
+import { Checks, Play, ArrowsClockwise, ShieldCheck, Plus, Trash } from "@phosphor-icons/react";
 import { toast } from "sonner";
 
 import api from "@/lib/api";
@@ -19,6 +19,9 @@ const EMPTY = {
   shift: "",
   quantity: "",
   remarks: "",
+  dimension_source: "manual",
+  pdi_template: "",
+  characteristics: [],
   stop_before_create: true,
 };
 
@@ -82,6 +85,23 @@ export default function DqmsModule() {
     setForm((old) => ({ ...old, [key]: value }));
   };
 
+  const addCharacteristic = () => update("characteristics", [
+    ...form.characteristics,
+    { name: "", nominal: "", lower_limit: "", upper_limit: "", measured_value: "", unit: "mm" },
+  ]);
+
+  const updateCharacteristic = (index, key, value) => update(
+    "characteristics",
+    form.characteristics.map((item, itemIndex) => (
+      itemIndex === index ? { ...item, [key]: value } : item
+    )),
+  );
+
+  const removeCharacteristic = (index) => update(
+    "characteristics",
+    form.characteristics.filter((_, itemIndex) => itemIndex !== index),
+  );
+
   const submit = async () => {
     const required = ["part_number", "process", "machine", "operator", "inspector", "shift"];
     const missing = required.filter((key) => !String(form[key] || "").trim());
@@ -99,6 +119,13 @@ export default function DqmsModule() {
         ...form,
         quantity: form.quantity ? Number(form.quantity) : null,
         part_name: selectedPart?.name || form.part_name,
+        characteristics: form.characteristics.map((item) => ({
+          ...item,
+          nominal: item.nominal === "" ? null : Number(item.nominal),
+          lower_limit: Number(item.lower_limit),
+          upper_limit: Number(item.upper_limit),
+          measured_value: item.measured_value === "" ? null : Number(item.measured_value),
+        })),
       });
       toast.success(form.stop_before_create
         ? "DQMS dry run queued — worker will stop before Create Batch"
@@ -137,14 +164,19 @@ export default function DqmsModule() {
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           <label className="space-y-1 text-xs">
             <span className="uppercase tracking-wider text-muted-foreground">Part *</span>
-            <select value={form.part_number} onChange={(e) => update("part_number", e.target.value)}
-                    className="w-full h-10 bg-input border border-border rounded-sm px-3"
-                    data-testid="dqms-part">
-              <option value="">Select part</option>
+            <Input list="dqms-part-values" value={form.part_number}
+                   onChange={(e) => update("part_number", e.target.value)}
+                   placeholder="Select or enter a new part number" data-testid="dqms-part" />
+            <datalist id="dqms-part-values">
               {masters.parts.map((part) => (
-                <option key={part.code} value={part.code}>{part.code} — {part.name}</option>
+                <option key={part.code} value={part.code}>{part.name}</option>
               ))}
-            </select>
+            </datalist>
+          </label>
+          <label className="space-y-1 text-xs">
+            <span className="uppercase tracking-wider text-muted-foreground">Part name</span>
+            <Input value={form.part_name} onChange={(e) => update("part_name", e.target.value)}
+                   placeholder="Required for a new part" />
           </label>
 
           {Object.entries(FIELD_MASTERS).map(([field, masterKey]) => (
@@ -172,6 +204,62 @@ export default function DqmsModule() {
             <Input value={form.remarks} onChange={(e) => update("remarks", e.target.value)}
                    placeholder="Optional operator note" data-testid="dqms-remarks" />
           </label>
+        </div>
+
+        <div className="border border-border rounded-sm p-3 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wide">Dimensions & Tolerances</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Leave Value blank and the worker will use the midpoint of the allowed range.
+              </p>
+            </div>
+            <Button type="button" variant="secondary" size="sm" onClick={addCharacteristic} className="gap-1">
+              <Plus size={14} /> Add dimension
+            </Button>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="space-y-1 text-xs">
+              <span className="uppercase tracking-wider text-muted-foreground">Dimension source</span>
+              <select value={form.dimension_source}
+                      onChange={(e) => update("dimension_source", e.target.value)}
+                      className="w-full h-10 bg-input border border-border rounded-sm px-3">
+                <option value="manual">Manual</option>
+                <option value="pdi_template">PDI template</option>
+              </select>
+            </label>
+            {form.dimension_source === "pdi_template" && (
+              <label className="space-y-1 text-xs">
+                <span className="uppercase tracking-wider text-muted-foreground">PDI template name/path *</span>
+                <Input value={form.pdi_template}
+                       onChange={(e) => update("pdi_template", e.target.value)}
+                       placeholder="Template name or worker-local path" />
+              </label>
+            )}
+          </div>
+          {form.characteristics.map((item, index) => (
+            <div key={index} className="grid gap-2 md:grid-cols-7 items-end">
+              {[
+                ["name", "Dimension", "text"],
+                ["nominal", "Nominal", "number"],
+                ["lower_limit", "Minimum", "number"],
+                ["upper_limit", "Maximum", "number"],
+                ["measured_value", "Value", "number"],
+                ["unit", "Unit", "text"],
+              ].map(([key, label, type]) => (
+                <label className="space-y-1 text-xs" key={key}>
+                  <span className="text-[10px] uppercase text-muted-foreground">{label}</span>
+                  <Input type={type} step={type === "number" ? "any" : undefined}
+                         value={item[key]}
+                         onChange={(e) => updateCharacteristic(index, key, e.target.value)} />
+                </label>
+              ))}
+              <Button type="button" variant="ghost" size="icon"
+                      onClick={() => removeCharacteristic(index)} aria-label="Remove dimension">
+                <Trash size={16} className="text-red-400" />
+              </Button>
+            </div>
+          ))}
         </div>
 
         <label className="flex items-center gap-2 text-xs cursor-pointer">

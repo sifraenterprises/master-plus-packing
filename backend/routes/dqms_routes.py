@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
@@ -38,6 +38,23 @@ def serialize(doc):
     return output
 
 
+class DqmsCharacteristic(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    nominal: Optional[float] = None
+    lower_limit: float
+    upper_limit: float
+    measured_value: Optional[float] = None
+    unit: str = Field(default="mm", max_length=20)
+
+    @field_validator("upper_limit")
+    @classmethod
+    def validate_limits(cls, value: float, info):
+        lower = info.data.get("lower_limit")
+        if lower is not None and value < lower:
+            raise ValueError("upper_limit must be greater than or equal to lower_limit")
+        return value
+
+
 class DqmsBatchInput(BaseModel):
     part_number: str = Field(min_length=1, max_length=40)
     part_name: str = Field(default="", max_length=160)
@@ -48,6 +65,9 @@ class DqmsBatchInput(BaseModel):
     shift: str = Field(min_length=1, max_length=80)
     quantity: Optional[int] = Field(default=None, ge=1, le=1_000_000)
     remarks: str = Field(default="", max_length=500)
+    dimension_source: Literal["manual", "pdi_template"] = "manual"
+    pdi_template: str = Field(default="", max_length=260)
+    characteristics: list[DqmsCharacteristic] = Field(default_factory=list, max_length=200)
     stop_before_create: bool = True
 
     @field_validator("part_number", "process", "machine", "operator", "inspector", "shift")
@@ -57,6 +77,19 @@ class DqmsBatchInput(BaseModel):
         if not value:
             raise ValueError("must not be blank")
         return value
+
+    @field_validator("characteristics")
+    @classmethod
+    def validate_measurements(cls, values: list[DqmsCharacteristic]):
+        for item in values:
+            if item.measured_value is not None and not (
+                item.lower_limit <= item.measured_value <= item.upper_limit
+            ):
+                raise ValueError(
+                    f"{item.name}: measured value must be within "
+                    f"{item.lower_limit}–{item.upper_limit}"
+                )
+        return values
 
 
 @router.get("/masters")
@@ -106,6 +139,19 @@ async def list_batches(limit: int = 100, user: dict = Depends(get_current_user))
 @router.post("/batches")
 async def queue_batch(payload: DqmsBatchInput, user: dict = Depends(get_current_user)):
     await require_desktop_worker("dqms_start_batch")
+    if payload.part_name:
+        saved = await db.settings.find_one({"key": "dqms_masters"})
+        values = (saved or {}).get("value") or {}
+        parts = values.get("parts") or PARTS.copy()
+        if not any(str(part.get("code")) == payload.part_number for part in parts):
+            parts.append({"code": payload.part_number, "name": payload.part_name.strip()})
+            values["parts"] = parts
+            await db.settings.update_one(
+                {"key": "dqms_masters"},
+                {"$set": {"value": values, "updated_at": utcnow().isoformat(),
+                          "updated_by": user["username"]}},
+                upsert=True,
+            )
     timestamp = utcnow().isoformat()
     source = {
         **payload.model_dump(),
