@@ -44,6 +44,7 @@ export default function AsnModule() {
   const [pdiReq, setPdiReq] = useState(null);
   const [resuming, setResuming] = useState(false);
   const [stopBeforeSubmit, setStopBeforeSubmit] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
   const pollRef = useRef(null);
 
   const load = useCallback(async (f = filters) => {
@@ -132,6 +133,15 @@ export default function AsnModule() {
     if (d) { load(); startPoll(); }
   };
 
+  const selectableRows = rows.filter((r) => r.status !== "Completed" && r.status !== "Processing");
+  const allSelected = selectableRows.length > 0 && selectableRows.every((r) => selectedIds.includes(r.id));
+  const toggleAll = () => setSelectedIds(allSelected ? [] : selectableRows.map((r) => r.id));
+  const runSelected = async () => {
+    if (!selectedIds.length) return toast.info("Select at least one ASN job first");
+    const d = await call("post", "/asn/run", { ids: selectedIds, stop_before_submit: stopBeforeSubmit }, `Queued ${selectedIds.length} ASN job(s)`);
+    if (d) { setSelectedIds([]); load(); startPoll(); }
+  };
+
   const saveEdit = async () => {
     setSaving(true);
     const d = await call("put", `/asn/records/${editRec.id}`, {
@@ -215,6 +225,9 @@ export default function AsnModule() {
         <Button variant="secondary" onClick={runReady} disabled={running} data-testid="asn-run-ready" className="rounded-sm gap-1">
           <Play size={14} weight="bold" /> Start Automation
         </Button>
+        <Button variant="secondary" onClick={runSelected} disabled={running || !selectedIds.length} data-testid="asn-run-selected" className="rounded-sm gap-1">
+          <Play size={14} weight="bold" /> Run Selected ({selectedIds.length})
+        </Button>
         <Button variant="secondary" onClick={retryFailed} disabled={running} data-testid="asn-retry-failed" className="rounded-sm gap-1 text-red-400">
           <ArrowsCounterClockwise size={14} /> Retry Failed
         </Button>
@@ -275,8 +288,10 @@ export default function AsnModule() {
         <Table data-testid="asn-table">
           <TableHeader>
             <TableRow className="hover:bg-transparent border-border">
-              {["Invoice Number", "Invoice Date", "PO Number", "Transporter", "Parts", "Status", "ASN Number", "Action"].map((h) => (
-                <TableHead key={h} className="text-[10px] uppercase tracking-[0.15em] whitespace-nowrap">{h}</TableHead>
+              {["Invoice Number", "Invoice Date", "PO Number", "Transporter", "Parts", "Status", "ASN Number", "Action"].map((h, i) => (
+                <TableHead key={h} className="text-[10px] uppercase tracking-[0.15em] whitespace-nowrap">
+                  {i === 0 && <input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all ASN jobs" data-testid="asn-select-all" className="mr-2" />}{h}
+                </TableHead>
               ))}
             </TableRow>
           </TableHeader>
@@ -290,7 +305,11 @@ export default function AsnModule() {
             ) : (
               rows.map((r) => (
                 <TableRow key={r.id} className="border-border hover:bg-secondary/50" data-testid={`asn-row-${r.invoice_no}`}>
-                  <TableCell className="font-mono text-xs whitespace-nowrap">{r.invoice_no}</TableCell>
+                  <TableCell className="font-mono text-xs whitespace-nowrap">
+                    <input type="checkbox" checked={selectedIds.includes(r.id)} disabled={r.status === "Completed" || r.status === "Processing"}
+                      onChange={() => setSelectedIds((ids) => ids.includes(r.id) ? ids.filter((id) => id !== r.id) : [...ids, r.id])}
+                      aria-label={`Select ${r.invoice_no}`} data-testid={`asn-select-${r.invoice_no}`} className="mr-2" />{r.invoice_no}
+                  </TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{r.invoice_date}</TableCell>
                   <TableCell className="font-mono text-xs whitespace-nowrap">{r.po_number || <span className="text-amber-400">add PO</span>}</TableCell>
                   <TableCell className="text-xs max-w-[150px] truncate">{r.transporter || "—"}</TableCell>

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { UserPlus, Trash, FloppyDisk } from "@phosphor-icons/react";
+import { UserPlus, Trash, FloppyDisk, DownloadSimple } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -92,6 +92,7 @@ export default function Settings() {
           <TabsTrigger value="masters" className="rounded-sm" data-testid="tab-masters">Masters</TabsTrigger>
           <TabsTrigger value="environment" className="rounded-sm" data-testid="tab-environment">System Environment</TabsTrigger>
           <TabsTrigger value="system" className="rounded-sm" data-testid="tab-system">System Status</TabsTrigger>
+          <TabsTrigger value="worker" className="rounded-sm" data-testid="tab-worker">Desktop Worker</TabsTrigger>
         </TabsList>
 
         <TabsContent value="environment" className="mt-6">
@@ -104,6 +105,22 @@ export default function Settings() {
 
         <TabsContent value="system" className="mt-6">
           <SystemStatusPanel />
+        </TabsContent>
+
+        <TabsContent value="worker" className="mt-6">
+          <div className="border border-border bg-card rounded-sm p-6 space-y-4" data-testid="desktop-worker-download">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Desktop Automation Worker</p>
+            <h2 className="text-xl font-bold">Download the latest worker</h2>
+            <p className="text-sm text-muted-foreground max-w-2xl">
+              Download the packaged desktop worker and install it on the assigned billing computer. The package does not contain portal credentials or worker tokens.
+            </p>
+            <a href="/downloads/GrewalOfficeWorker-latest.zip" download="GrewalOfficeWorker-latest.zip">
+              <Button size="sm" className="rounded-sm gap-2" data-testid="download-desktop-worker">
+                <DownloadSimple size={16} /> Download Worker ZIP
+              </Button>
+            </a>
+            <p className="text-[11px] text-muted-foreground">After download, configure the local <code>.env</code> file and run <code>start-worker.bat</code>.</p>
+          </div>
         </TabsContent>
 
         <TabsContent value="users" className="space-y-6 mt-6">

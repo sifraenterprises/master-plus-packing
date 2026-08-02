@@ -12,6 +12,11 @@ from database import db
 from models import utcnow
 from auth import get_current_user, require_admin, log_activity
 from alerts import send_alert
+from routes.worker_routes import (
+    create_automation_job,
+    desktop_execution_enabled,
+    require_desktop_worker,
+)
 from automation import (
     EWayBillAutomation, AutomationError, REQUIRED_ENV,
     load_selectors, save_selectors, validate_portal,
@@ -218,6 +223,56 @@ async def start_run(background_tasks: BackgroundTasks, ids: list[str], user: str
         raise HTTPException(status_code=409, detail="An automation run is already in progress")
     if not ids:
         raise HTTPException(status_code=400, detail="No records to process")
+
+    if desktop_execution_enabled():
+        mode = await get_mode()
+        test_mode = mode != "live"
+        await require_desktop_worker("eway_bill_entry", test_mode=test_mode)
+        jobs = []
+        skipped = []
+        for rec_id in ids:
+            md = await db.master_dispatch.find_one({"_id": ObjectId(rec_id)}) if ObjectId.is_valid(rec_id) else None
+            if not md:
+                skipped.append({"id": rec_id, "reason": "Master Dispatch record not found"})
+                continue
+            sub = await get_submission(rec_id)
+            data, skip_reason = eway_prepare(md, sub)
+            if skip_reason:
+                skipped.append({"id": rec_id, "reason": skip_reason})
+                await set_submission(rec_id, {"error": f"Skipped: {skip_reason}"})
+                continue
+            payload = {
+                **data,
+                "invoice_no": md.get("invoice_number", ""),
+                "dispatch_no": md.get("dispatch_no", ""),
+                "stop_before_submit": bool(stop_before_submit),
+            }
+            job = await create_automation_job(
+                job_type="eway_bill_entry",
+                payload=payload,
+                source_record_id=rec_id,
+                created_by=user,
+                test_mode=test_mode,
+            )
+            await set_submission(rec_id, {
+                "status": "Queued",
+                "error": None,
+                "desktop_job_id": job["id"],
+                "dispatch_no": md.get("dispatch_no", rec_id),
+            })
+            jobs.append(job)
+        if not jobs:
+            raise HTTPException(status_code=400, detail="No valid E-Way Bill records to queue")
+        return {
+            "run_id": jobs[0]["id"],
+            "job_ids": [job["id"] for job in jobs],
+            "total": len(jobs),
+            "skipped": skipped,
+            "module": "eway",
+            "execution": "desktop",
+            "stop_before_submit": bool(stop_before_submit),
+        }
+
     run_id = str(uuid.uuid4())
     run_state.update({"running": True, "run_id": run_id, "module": "eway",
                       "total": len(ids), "processed": 0, "started_at": now_iso()})
