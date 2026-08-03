@@ -117,9 +117,9 @@ export default function Settings() {
             <p className="text-sm text-muted-foreground max-w-2xl">
               Download the packaged desktop worker and install it on the assigned billing computer. The package does not contain portal credentials or worker tokens.
             </p>
-            <a href="/downloads/GrewalOfficeWorker-latest.zip" download="GrewalOfficeWorker-latest.zip">
+            <a href="/downloads/GrewalWorkerSetup.exe" download="GrewalWorkerSetup.exe">
               <Button size="sm" className="rounded-sm gap-2" data-testid="download-desktop-worker">
-                <DownloadSimple size={16} /> Download Worker ZIP
+                <DownloadSimple size={16} /> Download Worker Installer
               </Button>
             </a>
             <p className="text-[11px] text-muted-foreground">After download, configure the local <code>.env</code> file and run <code>start-worker.bat</code>.</p>
