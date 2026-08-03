@@ -16,6 +16,11 @@ from models import utcnow
 from auth import get_current_user, require_admin, log_activity
 from automation import EwayPrintAutomation, AutomationError, load_selectors, save_selectors
 from environment import env_fields, env_list_filter, env_upload_dir
+from routes.worker_routes import (
+    create_automation_job,
+    desktop_execution_enabled,
+    require_desktop_worker,
+)
 
 router = APIRouter(prefix="/eway-print", tags=["eway-print"])
 
@@ -230,13 +235,51 @@ async def process_queue(ids: list[str], run_id: str, user: str, stop_before_down
 
 
 async def _start(background_tasks: BackgroundTasks, ids: list[str], user: str, stop_before_download: bool):
-    await get_mode()  # blocks in maintenance / emergency stop before scheduling
+    mode = await get_mode()  # blocks in maintenance / emergency stop before scheduling
     if run_state["running"]:
         raise HTTPException(status_code=409, detail="A Print E-Way Bill run is already in progress")
     valid = [i for i in ids if ObjectId.is_valid(i)
              and await db.eway_print_jobs.find_one({"_id": ObjectId(i)}, {"_id": 1})]
     if not valid:
         raise HTTPException(status_code=400, detail="No valid jobs to process")
+
+    if desktop_execution_enabled():
+        test_mode = mode != "live"
+        await require_desktop_worker(JOB_TYPE, test_mode=test_mode)
+        jobs = []
+        for record_id in valid:
+            record = await db.eway_print_jobs.find_one({"_id": ObjectId(record_id)})
+            if not record:
+                continue
+            job = await create_automation_job(
+                job_type=JOB_TYPE,
+                payload={
+                    "eway_bill_number": record.get("eway_bill_number", ""),
+                    "dispatch_no": record.get("dispatch_no", ""),
+                    "invoice_no": record.get("invoice_no", ""),
+                    "stop_before_download": bool(stop_before_download),
+                },
+                source_record_id=record_id,
+                created_by=user,
+                test_mode=test_mode,
+            )
+            await db.eway_print_jobs.update_one(
+                {"_id": ObjectId(record_id)},
+                {"$set": {
+                    "status": "Queued", "error_message": "",
+                    "desktop_job_id": job["id"], "updated_at": now_iso(),
+                }},
+            )
+            jobs.append(job)
+        if not jobs:
+            raise HTTPException(status_code=400, detail="No valid print jobs to queue")
+        return {
+            "run_id": jobs[0]["id"],
+            "job_ids": [job["id"] for job in jobs],
+            "total": len(jobs),
+            "execution": "desktop",
+        }
+
     run_id = str(uuid.uuid4())
     run_state.update({"running": True, "run_id": run_id, "total": len(valid), "processed": 0,
                       "current": None, "started_at": now_iso(), "phase": "Starting",

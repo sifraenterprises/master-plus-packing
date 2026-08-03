@@ -18,6 +18,11 @@ from models import utcnow
 from auth import get_current_user, log_activity
 from alerts import send_alert
 from automation import ASNAutomation, AutomationError, AsnValidationError, DropdownMatchError, BatchAllocationError, SCREENSHOT_DIR
+from routes.worker_routes import (
+    create_automation_job,
+    desktop_execution_enabled,
+    require_desktop_worker,
+)
 
 router = APIRouter(prefix="/asn", tags=["asn"])
 logger = logging.getLogger(__name__)
@@ -381,7 +386,7 @@ async def asn_stats(user: dict = Depends(get_current_user)):
 # ---------- Runs (queue: one ASN at a time) ----------
 
 async def _start(background_tasks: BackgroundTasks, ids: list[str], user: str, stop_before_submit: bool = False):
-    await get_mode()  # blocks in maintenance / emergency stop before scheduling
+    mode = await get_mode()  # blocks in maintenance / emergency stop before scheduling
     if run_state["running"]:
         raise HTTPException(status_code=409, detail="An ASN automation run is already in progress")
     if not ids:
@@ -390,6 +395,69 @@ async def _start(background_tasks: BackgroundTasks, ids: list[str], user: str, s
                 if await db.asn_creation.find_one({"_id": ObjectId(rid)}, {"_id": 1})]
     if not runnable:
         raise HTTPException(status_code=400, detail="No valid records to process")
+
+    if desktop_execution_enabled():
+        test_mode = mode != "live"
+        await require_desktop_worker("asn_creation", test_mode=test_mode)
+        jobs = []
+        skipped = []
+        for rec_id in runnable:
+            doc = await db.asn_creation.find_one({"_id": ObjectId(rec_id)})
+            if not doc or doc.get("status") == "Completed":
+                skipped.append({"id": rec_id, "reason": "Record unavailable or already completed"})
+                continue
+            allocations = {}
+            for row in doc.get("batch_allocations") or []:
+                part = str(row.get("part_number") or "").strip()
+                if not part:
+                    continue
+                allocations.setdefault(part, []).append({
+                    "batch_no": row.get("batch_number", ""),
+                    "allocate_qty": float(row.get("allocated_quantity") or 0),
+                    "consider": row.get("batch_considerable", "Yes") == "Yes",
+                })
+            payload = {
+                "po_number": doc.get("po_number", ""),
+                "invoice_no": doc.get("invoice_no", ""),
+                "invoice_date": to_dmy(doc.get("invoice_date", "")),
+                "basic_amount": doc.get("basic_amount", 0),
+                "total_amount": doc.get("total_amount", 0),
+                "cgst": doc.get("cgst", 0),
+                "sgst": doc.get("sgst", 0),
+                "igst": doc.get("igst", 0),
+                "no_of_cases": doc.get("no_of_cases", 0),
+                "transporter": doc.get("transporter", ""),
+                "items": doc.get("items", []),
+                "batch_allocations": allocations,
+                "stop_before_submit": bool(stop_before_submit),
+                "manual_batch_selection": bool(stop_before_submit and not allocations),
+            }
+            job = await create_automation_job(
+                job_type="asn_creation",
+                payload=payload,
+                source_record_id=rec_id,
+                created_by=user,
+                test_mode=test_mode,
+            )
+            await db.asn_creation.update_one(
+                {"_id": ObjectId(rec_id)},
+                {"$set": {
+                    "status": "Queued", "error_message": "",
+                    "desktop_job_id": job["id"], "updated_at": now_iso(),
+                }},
+            )
+            jobs.append(job)
+        if not jobs:
+            raise HTTPException(status_code=400, detail="No valid ASN records to queue")
+        return {
+            "run_id": jobs[0]["id"],
+            "job_ids": [job["id"] for job in jobs],
+            "total": len(jobs),
+            "skipped": skipped,
+            "execution": "desktop",
+            "stop_before_submit": bool(stop_before_submit),
+        }
+
     run_id = str(uuid.uuid4())
     run_state.update({"running": True, "run_id": run_id, "total": len(runnable), "processed": 0,
                       "current": None, "started_at": now_iso(), "phase": "Starting", "awaiting_pdi": None})

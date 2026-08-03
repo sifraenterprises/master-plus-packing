@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { UserPlus, Trash, FloppyDisk } from "@phosphor-icons/react";
+import { UserPlus, Trash, FloppyDisk, DownloadSimple } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,15 +28,18 @@ export default function Settings() {
   const [profile, setProfile] = useState(null);
   const [logs, setLogs] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [workers, setWorkers] = useState([]);
 
   const loadUsers = useCallback(() => api.get("/admin/users").then((r) => setUsers(r.data)).catch(() => {}), []);
   const loadLogs = useCallback(() => api.get("/admin/logs").then((r) => setLogs(r.data)).catch(() => {}), []);
+  const loadWorkers = useCallback(() => api.get("/worker/admin/list").then((r) => setWorkers(r.data)).catch(() => {}), []);
 
   useEffect(() => {
     loadUsers();
     loadLogs();
+    loadWorkers();
     api.get("/admin/company-profile").then((r) => setProfile(r.data)).catch(() => {});
-  }, [loadUsers, loadLogs]);
+  }, [loadUsers, loadLogs, loadWorkers]);
 
   const createUser = async () => {
     setSaving(true);
@@ -92,6 +95,7 @@ export default function Settings() {
           <TabsTrigger value="masters" className="rounded-sm" data-testid="tab-masters">Masters</TabsTrigger>
           <TabsTrigger value="environment" className="rounded-sm" data-testid="tab-environment">System Environment</TabsTrigger>
           <TabsTrigger value="system" className="rounded-sm" data-testid="tab-system">System Status</TabsTrigger>
+          <TabsTrigger value="worker" className="rounded-sm" data-testid="tab-worker">Desktop Worker</TabsTrigger>
         </TabsList>
 
         <TabsContent value="environment" className="mt-6">
@@ -104,6 +108,31 @@ export default function Settings() {
 
         <TabsContent value="system" className="mt-6">
           <SystemStatusPanel />
+        </TabsContent>
+
+        <TabsContent value="worker" className="mt-6">
+          <div className="border border-border bg-card rounded-sm p-6 space-y-4" data-testid="desktop-worker-download">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Desktop Automation Worker</p>
+            <h2 className="text-xl font-bold">Download the latest worker</h2>
+            <p className="text-sm text-muted-foreground max-w-2xl">
+              Download the packaged desktop worker and install it on the assigned billing computer. The package does not contain portal credentials or worker tokens.
+            </p>
+            <a href="/downloads/GrewalWorkerSetup.exe" download="GrewalWorkerSetup.exe">
+              <Button size="sm" className="rounded-sm gap-2" data-testid="download-desktop-worker">
+                <DownloadSimple size={16} /> Download Worker Installer
+              </Button>
+            </a>
+            <p className="text-[11px] text-muted-foreground">After download, configure the local <code>.env</code> file and run <code>start-worker.bat</code>.</p>
+            <div className="border-t border-border pt-4 space-y-2">
+              <p className="text-xs uppercase tracking-[0.15em] text-muted-foreground">Registered workers</p>
+              {workers.length === 0 ? <p className="text-sm text-muted-foreground">No workers registered.</p> : workers.map((w) => (
+                <div key={w.worker_name} className="flex items-center justify-between rounded-sm bg-secondary/40 px-3 py-2 text-xs">
+                  <span className="font-mono">{w.worker_name} · v{w.version || "unknown"}</span>
+                  <Badge variant="outline" className={w.status === "online" ? "text-emerald-400" : "text-muted-foreground"}>{w.status}</Badge>
+                </div>
+              ))}
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="users" className="space-y-6 mt-6">

@@ -160,8 +160,10 @@ async def sync_source_record(job: dict, *, success: bool, result: dict | None = 
         return
 
     if job_type == "eway_bill_entry":
+        dry_run_ready = bool(success and output.get("stop_before_submit"))
         fields = {
-            "status": "Completed" if success else "Failed", "updated_at": timestamp,
+            "status": "Dry Run Ready" if dry_run_ready else ("Completed" if success else "Failed"),
+            "updated_at": timestamp,
             "error": None if success else error,
         }
         if success:
@@ -172,10 +174,33 @@ async def sync_source_record(job: dict, *, success: bool, result: dict | None = 
         updated = await db.eway_submissions.update_one(
             {"record_id": source_id, **owned}, {"$set": fields},
         )
-        if success and updated.matched_count:
+        if success and not dry_run_ready and updated.matched_count:
             await db.master_dispatch.update_one(
                 {"_id": source_oid}, {"$set": {"status": "completed", "updated_at": timestamp}},
             )
+        return
+
+    if job_type == "print_eway_bill":
+        files = output.get("files") or []
+        saved = files[0] if files and isinstance(files[0], dict) else {}
+        fields = {
+            "status": "Completed" if success else "Failed",
+            "error_message": "" if success else error,
+            "updated_at": timestamp,
+        }
+        if success:
+            fields.update({
+                "completed_at": timestamp,
+                "completed_by": job.get("created_by", "desktop-worker"),
+                "pdf_name": saved.get("pdf_name", ""),
+                "desktop_pdf_path": saved.get("pdf_path", ""),
+                "retry_count": 0,
+            })
+        else:
+            fields["retry_count"] = int(job.get("attempts") or 1)
+        await db.eway_print_jobs.update_one(
+            {"_id": source_oid, **owned}, {"$set": fields},
+        )
         return
 
     if job_type == "vendor_eway_acknowledgement":
@@ -281,6 +306,23 @@ async def register_worker(payload: WorkerRegistration, _: str = Depends(require_
         upsert=True,
     )
     return {"ok": True, "worker": payload.worker_name, "server_time": timestamp}
+
+
+@router.get("/admin/list")
+async def admin_worker_list(user: dict = Depends(require_admin)):
+    """Read-only worker inventory for the admin update screen."""
+    latest = os.environ.get("WORKER_LATEST_VERSION", "").strip()
+    download_url = os.environ.get("WORKER_DOWNLOAD_URL", "").strip()
+    workers = await db.automation_workers.find({}).sort("worker_name", 1).to_list(100)
+    result = []
+    for worker in workers:
+        item = serialize(worker)
+        item.pop("token", None)
+        item["latest_version"] = latest
+        item["download_url"] = download_url
+        item["update_available"] = bool(latest and item.get("version") and item["version"] != latest)
+        result.append(item)
+    return result
 
 
 @router.post("/heartbeat")
