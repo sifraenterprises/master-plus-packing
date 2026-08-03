@@ -288,6 +288,23 @@ async def register_worker(payload: WorkerRegistration, _: str = Depends(require_
     return {"ok": True, "worker": payload.worker_name, "server_time": timestamp}
 
 
+@router.get("/admin/list")
+async def admin_worker_list(user: dict = Depends(require_admin)):
+    """Read-only worker inventory for the admin update screen."""
+    latest = os.environ.get("WORKER_LATEST_VERSION", "").strip()
+    download_url = os.environ.get("WORKER_DOWNLOAD_URL", "").strip()
+    workers = await db.automation_workers.find({}).sort("worker_name", 1).to_list(100)
+    result = []
+    for worker in workers:
+        item = serialize(worker)
+        item.pop("token", None)
+        item["latest_version"] = latest
+        item["download_url"] = download_url
+        item["update_available"] = bool(latest and item.get("version") and item["version"] != latest)
+        result.append(item)
+    return result
+
+
 @router.post("/heartbeat")
 async def heartbeat(payload: HeartbeatInput, _: str = Depends(require_worker_token)):
     timestamp = now_iso()

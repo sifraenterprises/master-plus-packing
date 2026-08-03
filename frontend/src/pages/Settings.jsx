@@ -28,15 +28,18 @@ export default function Settings() {
   const [profile, setProfile] = useState(null);
   const [logs, setLogs] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [workers, setWorkers] = useState([]);
 
   const loadUsers = useCallback(() => api.get("/admin/users").then((r) => setUsers(r.data)).catch(() => {}), []);
   const loadLogs = useCallback(() => api.get("/admin/logs").then((r) => setLogs(r.data)).catch(() => {}), []);
+  const loadWorkers = useCallback(() => api.get("/worker/admin/list").then((r) => setWorkers(r.data)).catch(() => {}), []);
 
   useEffect(() => {
     loadUsers();
     loadLogs();
+    loadWorkers();
     api.get("/admin/company-profile").then((r) => setProfile(r.data)).catch(() => {});
-  }, [loadUsers, loadLogs]);
+  }, [loadUsers, loadLogs, loadWorkers]);
 
   const createUser = async () => {
     setSaving(true);
@@ -120,6 +123,15 @@ export default function Settings() {
               </Button>
             </a>
             <p className="text-[11px] text-muted-foreground">After download, configure the local <code>.env</code> file and run <code>start-worker.bat</code>.</p>
+            <div className="border-t border-border pt-4 space-y-2">
+              <p className="text-xs uppercase tracking-[0.15em] text-muted-foreground">Registered workers</p>
+              {workers.length === 0 ? <p className="text-sm text-muted-foreground">No workers registered.</p> : workers.map((w) => (
+                <div key={w.worker_name} className="flex items-center justify-between rounded-sm bg-secondary/40 px-3 py-2 text-xs">
+                  <span className="font-mono">{w.worker_name} · v{w.version || "unknown"}</span>
+                  <Badge variant="outline" className={w.status === "online" ? "text-emerald-400" : "text-muted-foreground"}>{w.status}</Badge>
+                </div>
+              ))}
+            </div>
           </div>
         </TabsContent>
 
